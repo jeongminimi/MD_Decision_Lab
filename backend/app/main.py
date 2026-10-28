@@ -7,7 +7,6 @@ from . import models  # noqa: F401 — registers SQLAlchemy metadata
 from .api.routes import router
 from .api.work_routes import router as work_router
 from .api.hm_sim_routes import router as hm_sim_router
-from .modules.shortform import models as shortform_models  # noqa: F401 — registers module table
 from .database import Base, SessionLocal, engine, ensure_schema_compatibility
 from .services.seed import seed_demo_data
 

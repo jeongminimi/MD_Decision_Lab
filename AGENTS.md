@@ -11,7 +11,6 @@ Help a small commerce MD turn product-level sales and stock data into traceable 
 - Show the numbers and rule behind every stock-risk label and recommendation.
 - Clearly distinguish measured input data from estimates and suggested actions.
 - Do not describe a recommendation as an observed business result.
-- Keep the short-form content workflow behind its own input/output boundary. It may consume an explicit product brief, but must not import or mutate inventory-analysis internals. This boundary should allow extraction into a standalone service later.
 - Do not add automatic publishing, real customer data, or external AI API calls in the MVP.
 
 ## Implementation

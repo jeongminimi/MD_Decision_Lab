@@ -15,7 +15,6 @@ An apparel or small-brand MD who manages product availability, replenishment, pr
 3. Review a transparent risk label and recommended next action.
 4. Record the MD's selected action and rationale.
 5. Compare the product's later sales, margin, and stock with its pre-action state.
-6. Optionally prepare a short-form content brief from a product and an approved action.
 
 ## MVP scope
 
@@ -25,7 +24,6 @@ An apparel or small-brand MD who manages product availability, replenishment, pr
 - CSV import for daily sales.
 - Rule-based stock risk and action recommendations.
 - Action logging and before/after comparison foundations.
-- Short-form content-draft module with its own request/response contract.
 - Responsive desktop-first UI suitable for a portfolio walkthrough.
 
 ## Out of scope for this two-day MVP
@@ -42,5 +40,4 @@ An apparel or small-brand MD who manages product availability, replenishment, pr
 - A reviewer can import a sales CSV and see the product metrics change.
 - Every risk label can be explained from visible inputs and documented thresholds.
 - A user can record an action against a product and see it in the history.
-- The short-form module can produce an editable draft without changing stock-analysis data.
 - The owner can explain the domain problem, rules, data model, limits, and their own role honestly.
