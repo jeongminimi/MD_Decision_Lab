@@ -77,6 +77,8 @@ python sample_data/hm_operating_case/verify_hm_operating_case.py
 
 스크립트는 실행 전에 원본 파일의 크기와 SHA-256을 [기록된 값](docs/DATA_SOURCES.md)과 비교합니다. 앱의 H&M 작업공간에서 **운영 시뮬레이션 자료 연결**을 한 번 누르면 검증 후 저장됩니다. 데이터를 이미 만든 상태에서 다시 만들려면 `import_hm.py`에 `--replace`를 붙입니다.
 
+상품 사진은 H&M Kaggle 자료입니다. 화면을 캡처하거나 시연 자료를 만들 때는 상단의 **사진 표시/사진 숨김** 버튼을 쓰거나 주소 끝에 `?photos=off`를 붙여 사진을 가리세요.
+
 ### 4. 자사 파일로 쓰기
 
 `오늘의 할 일`의 **자사 상품·판매 파일 연결**에서 두 파일을 올립니다. 열 형식은 `sample_data/company_products_template.csv`, `sample_data/company_sales_template.csv`를 참고하세요. 입고 예정일·기초재고 등 선택 열은 [WORKSPACE_DATA.md](docs/WORKSPACE_DATA.md)에 있습니다. 고객명·연락처 같은 개인정보 열은 지우고 올리세요.
