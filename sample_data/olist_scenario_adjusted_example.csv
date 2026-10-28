@@ -1,6 +1,0 @@
-scenario_name,as_of_date,sku,stock_on_hand,inbound_units,lead_time_days,target_cover_days,unit_cost
-재고 조정안 (합성),2018-08-31,OLIST-e7cc48a9daff5436f63d3aad9426f28b,60,0,14,45,90
-재고 조정안 (합성),2018-08-31,OLIST-73326828aa5efe1ba096223de496f596,70,0,10,45,35
-재고 조정안 (합성),2018-08-31,OLIST-19c91ef95d509ea33eda93495c4d3481,40,0,7,45,60
-재고 조정안 (합성),2018-08-31,OLIST-3fbc0ef745950c7932d5f2a446189725,25,0,12,45,30
-재고 조정안 (합성),2018-08-31,OLIST-bb50f2e236e5eea0100680137654686c,30,0,10,45,150

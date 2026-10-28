@@ -33,6 +33,7 @@ def health():
 
 @router.get("/dashboard")
 def dashboard(db: Session = Depends(get_db)):
+    # Older local databases still hold rows from a removed practice import; keep them out of this list.
     products = db.scalars(select(Product).where(~Product.sku.like("OLIST-%"), ~Product.sku.like("FSH-%")).order_by(Product.sku)).all()
     analyses = [analyze_product(product, db) for product in products]
     counts = {risk: sum(1 for item in analyses if item.risk == risk) for risk in RISK_LABELS}

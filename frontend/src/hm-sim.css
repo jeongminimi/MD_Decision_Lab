@@ -17,8 +17,8 @@
 .sim-columns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:14px 0}
 .sim-columns>div,.sim-post-box{padding:16px;border:1px solid #e8eae2;border-radius:14px;background:#fff}
 .sim-columns h3,.sim-two h3,.work-detail>h3{display:flex;gap:8px;align-items:center;margin:0 0 10px;font-size:15px}
-.sim-columns dl,.sim-post-box dl{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;margin:0;font-size:13px}
-.sim-columns dt,.sim-post-box dt{color:#738076}
+.sim-columns dl,.sim-post-box dl{display:grid;grid-template-columns:fit-content(45%) minmax(0,1fr);gap:6px 12px;margin:0;font-size:13px}
+.sim-columns dt,.sim-post-box dt{color:#738076}.sim-columns dd small{margin-top:3px;font-weight:400}
 .sim-columns dd,.sim-post-box dd{margin:0;font-weight:700;color:#253229}
 .sim-columns small,.sim-post-box small{display:block;margin-top:10px;color:#8c7762;font-size:11px;line-height:1.5}
 .sim-reasons{margin:0 0 16px;font-size:12px;color:#4d5b52}
@@ -46,3 +46,5 @@
   .sim-page .work-summary,.sim-columns,.sim-two{grid-template-columns:1fr}
   .sim-legend b{margin-left:0}
 }
+.sim-after{display:block;margin-top:6px;padding:7px 9px;border-radius:8px;background:#f3f1fa;color:#4f4a6b}.sim-after b{margin-right:6px}.sim-retro th small{display:block;font-weight:400;color:#829087;margin-top:3px}
+.sim-forecast-method{display:grid;gap:6px;margin:0 0 12px;padding:12px 14px;border-radius:10px;background:#f6f8f4;font-size:13px}.sim-forecast-method p{margin:0}.sim-forecast-method b{margin-right:8px}.sim-forecast-method small{display:block;margin-top:3px;color:#738076}.sim-forecast h3{margin:18px 0 10px;font-size:15px}.sim-forecast h3 small{font-weight:400;color:#829087;margin-left:6px}.sim-forecast th small{display:block;font-weight:400;color:#829087;margin-top:3px}.sim-gap{color:#a5423c}

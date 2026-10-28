@@ -23,7 +23,6 @@ These are explicit heuristics for a small demonstrator, not a forecast model. Th
 5. `slow_moving`: stock cover exceeds the product's configured target cover, while it has non-zero sales history.
 6. `healthy`: none of the above.
 
-For an Olist inventory scenario, a product with no delivered sales in the complete selected 30-day historical window is not treated as an urgent stockout. Positive assumed stock is marked slow-moving; zero assumed stock is marked as requiring data review. No replenishment quantity is suggested without observed demand.
 
 ## Suggested next action
 

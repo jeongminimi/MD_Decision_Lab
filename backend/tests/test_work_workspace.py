@@ -30,10 +30,10 @@ class WorkWorkspaceTests(unittest.TestCase):
         self.db.close()
         self.engine.dispose()
 
-    def upload(self, sales=SALES):
+    def upload(self, sales=SALES, products=PRODUCTS):
         return asyncio.run(upload_dataset(
             name="My apparel", snapshot_date=date(2026, 9, 2), complete_calendar=True,
-            products_file=UploadFile(filename="products.csv", file=io.BytesIO(PRODUCTS)),
+            products_file=UploadFile(filename="products.csv", file=io.BytesIO(products)),
             sales_file=UploadFile(filename="sales.csv", file=io.BytesIO(sales)), db=self.db,
         ))
 
@@ -128,6 +128,95 @@ class WorkWorkspaceTests(unittest.TestCase):
             reorderable=False), self.db)
         self.assertEqual(analysis(created["id"], date(2026, 9, 2), None, None, self.db)["products"][0]["stock_on_hand"], 10)
         self.assertEqual(analysis(created["id"], date(2026, 9, 3), None, None, self.db)["products"][0]["stock_on_hand"], 8)
+
+    def test_inbound_counts_only_with_a_date_inside_the_window(self):
+        created = self.upload()
+        common = dict(as_of_date=date(2026, 9, 2), stock_on_hand=5, inbound_units=40, lead_time_days=7,
+                      unit_price_krw=80000, unit_cost_krw=40000, reorderable=True)
+        update_inputs(created["id"], "A-1", WorkInputPayload(**common), self.db)
+        payload = WorkComparePayload(dataset_id=created["id"], sku="A-1", as_of_date=date(2026, 9, 2),
+                                     discount_pct=0, expected_units_30d=30, purchase_units=0)
+        undated = compare(payload, self.db)
+        self.assertFalse(undated["feasible"])
+        self.assertEqual(undated["available_units"], 5)
+        self.assertIn("입고 예정일이 없어", undated["excluded_notes"][0])
+        update_inputs(created["id"], "A-1", WorkInputPayload(**common, inbound_date=date(2026, 9, 4)), self.db)
+        self.assertEqual(analysis(created["id"], date(2026, 9, 2), None, None, self.db)["products"][0]["inbound_date"],
+                         date(2026, 9, 4))
+        early = compare(payload, self.db)
+        self.assertTrue(early["feasible"])
+        self.assertEqual(early["available_units"], 45)
+        update_inputs(created["id"], "A-1", WorkInputPayload(**common, inbound_date=date(2026, 9, 28)), self.db)
+        late = compare(payload, self.db)
+        self.assertFalse(late["feasible"])
+        self.assertEqual(late["available_units"], 45)
+        self.assertEqual(late["first_gap_date"], date(2026, 9, 8))
+        with self.assertRaises(HTTPException) as error:
+            save_decision(WorkDecisionPayload(**payload.model_dump(), action="현재 유지",
+                                              rationale="입고 전에 재고가 비는지 확인합니다."), self.db)
+        self.assertIn("재고가 비어", error.exception.detail)
+        with self.assertRaises(HTTPException):
+            update_inputs(created["id"], "A-1", WorkInputPayload(**common, inbound_date=date(2026, 9, 2)), self.db)
+
+    def test_purchase_beyond_lead_window_is_not_available(self):
+        created = self.upload()
+        update_inputs(created["id"], "A-1", WorkInputPayload(
+            as_of_date=date(2026, 9, 2), stock_on_hand=5, inbound_units=0, lead_time_days=45,
+            unit_price_krw=80000, unit_cost_krw=40000, reorderable=True), self.db)
+        result = compare(WorkComparePayload(dataset_id=created["id"], sku="A-1", as_of_date=date(2026, 9, 2),
+                                            discount_pct=0, expected_units_30d=20, purchase_units=100), self.db)
+        self.assertFalse(result["feasible"])
+        self.assertEqual(result["available_units"], 5)
+        self.assertEqual(result["purchase_arrival_date"], date(2026, 10, 17))
+
+    def test_upload_rejects_inbound_date_on_or_before_snapshot(self):
+        header = b"sku,name,stock_on_hand,inbound_units,inbound_date\n"
+        with self.assertRaises(HTTPException) as error:
+            self.upload(products=header + b"A-1,Coat,10,20,2026-09-02\n")
+        self.assertIn("inbound_date", error.exception.detail)
+        created = self.upload(products=header + b"A-1,Coat,10,20,2026-09-10\n")
+        item = analysis(created["id"], date(2026, 9, 2), None, None, self.db)["products"][0]
+        self.assertEqual(item["inbound_date"], date(2026, 9, 10))
+    def test_sell_through_needs_a_closing_ledger_and_complete_sales(self):
+        created = self.upload()
+        common = dict(as_of_date=date(2026, 9, 2), stock_on_hand=10, inbound_units=0, lead_time_days=7,
+                      unit_price_krw=80000, unit_cost_krw=40000, reorderable=False)
+        item = analysis(created["id"], date(2026, 9, 2), None, None, self.db)["products"][0]
+        self.assertEqual(item["sell_through"]["status"], "missing")
+        # 9/1~9/2 sold 3: 8 opening + 5 received − 3 = 10 on hand.
+        update_inputs(created["id"], "A-1", WorkInputPayload(
+            **common, opening_stock=8, opening_date=date(2026, 9, 1), received_units=5), self.db)
+        st = analysis(created["id"], date(2026, 9, 2), None, None, self.db)["products"][0]["sell_through"]
+        self.assertEqual((st["status"], st["pct"], st["sold_units"], st["source"]), ("ok", 23.1, 3, "자사 기록"))
+        update_inputs(created["id"], "A-1", WorkInputPayload(
+            **common, opening_stock=8, opening_date=date(2026, 9, 1), received_units=9), self.db)
+        st = analysis(created["id"], date(2026, 9, 2), None, None, self.db)["products"][0]["sell_through"]
+        self.assertEqual((st["status"], st["pct"], st["difference_units"]), ("mismatch", None, -4))
+        dataset = self.db.get(WorkDataset, created["id"])
+        dataset.complete_calendar = False
+        self.db.commit()
+        st = analysis(created["id"], date(2026, 9, 2), None, None, self.db)["products"][0]["sell_through"]
+        self.assertEqual((st["status"], st["pct"]), ("missing", None))
+        dataset.kind = "hm"
+        self.db.commit()
+        st = analysis(created["id"], date(2026, 9, 2), None, None, self.db)["products"][0]["sell_through"]
+        self.assertEqual(st["status"], "not_applicable")
+
+    def test_opening_stock_fields_are_entered_together(self):
+        created = self.upload()
+        common = dict(as_of_date=date(2026, 9, 2), stock_on_hand=10)
+        with self.assertRaises(HTTPException) as error:
+            update_inputs(created["id"], "A-1", WorkInputPayload(**common, opening_stock=8), self.db)
+        self.assertIn("함께", error.exception.detail)
+        with self.assertRaises(HTTPException):
+            update_inputs(created["id"], "A-1", WorkInputPayload(
+                **common, opening_stock=8, opening_date=date(2026, 9, 2), received_units=0), self.db)
+        header = b"sku,name,stock_on_hand,opening_stock,opening_date,received_units\n"
+        with self.assertRaises(HTTPException):
+            self.upload(products=header + b"A-1,Coat,10,8,,5\n")
+        created = self.upload(products=header + b"A-1,Coat,10,8,2026-09-01,5\n")
+        st = analysis(created["id"], date(2026, 9, 2), None, None, self.db)["products"][0]["sell_through"]
+        self.assertEqual(st["pct"], 23.1)
 
 
 if __name__ == "__main__":

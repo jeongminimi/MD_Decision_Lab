@@ -14,6 +14,8 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import WorkDailySale, WorkDataset, WorkDecision, WorkProduct, WorkProductInput, WorkInputSnapshot
+from ..services.sell_through import sell_through
+from ..services.stock_timeline import EVEN_SPREAD_NOTE, HORIZON_DAYS, check_daily_availability
 from ..services.work_risk import RISK_PRIORITY, classify_work_risk
 
 router = APIRouter(prefix="/api/work", tags=["MD workspaces"])
@@ -70,6 +72,18 @@ def _require_fields(rows: list[dict[str, str]], required: set[str], label: str) 
         raise ValueError(f"{label} 필수 열이 없습니다: {', '.join(sorted(missing))}")
 
 
+def _period_problem(fields: dict, as_of: date) -> str | None:
+    """Opening stock, its date and units received since then are entered together or not at all."""
+    given = [fields.get(key) is not None for key in ("opening_stock", "opening_date", "received_units")]
+    if any(given) and not all(given):
+        return "기초재고·기초재고일·기간 입고(opening_stock, opening_date, received_units)는 함께 입력하세요."
+    if all(given) and fields.get("stock_on_hand") is None:
+        return "판매율을 계산하려면 기준일 현재고(stock_on_hand)도 입력하세요."
+    if all(given) and not fields["opening_date"] < as_of:
+        return "기초재고일은 재고 기준일보다 앞선 날짜여야 합니다."
+    return None
+
+
 @router.get("/datasets")
 def datasets(db: Session = Depends(get_db)):
     entries = db.scalars(select(WorkDataset).order_by(WorkDataset.created_at.desc(), WorkDataset.id.desc())).all()
@@ -97,12 +111,30 @@ async def upload_dataset(
             if not sku or len(sku) > 64 or sku in products or not row["name"].strip():
                 raise ValueError(f"상품 {index}행: SKU 중복·누락 또는 상품명 누락입니다.")
             fields = {key: _number(row.get(key), f"상품 {index}행 {key}", integer=key in {
-                "stock_on_hand", "inbound_units", "lead_time_days"}) for key in (
-                "stock_on_hand", "inbound_units", "lead_time_days", "unit_price_krw", "unit_cost_krw")}
+                "stock_on_hand", "inbound_units", "lead_time_days", "opening_stock", "received_units"}) for key in (
+                "stock_on_hand", "inbound_units", "lead_time_days", "unit_price_krw", "unit_cost_krw",
+                "opening_stock", "received_units")}
             reorder = row.get("reorderable", "").strip().lower()
             if reorder not in {"", "true", "false", "1", "0", "yes", "no"}:
                 raise ValueError(f"상품 {index}행 reorderable: true 또는 false를 입력하세요.")
             fields["reorderable"] = None if not reorder else reorder in {"true", "1", "yes"}
+            inbound_raw = row.get("inbound_date", "").strip()
+            try:
+                fields["inbound_date"] = date.fromisoformat(inbound_raw[:10]) if inbound_raw else None
+            except ValueError as exc:
+                raise ValueError(f"상품 {index}행 inbound_date: YYYY-MM-DD 형식으로 입력하세요.") from exc
+            if fields["inbound_date"] is not None and fields["inbound_date"] <= snapshot_date:
+                raise ValueError(f"상품 {index}행 inbound_date: 입고 예정일은 재고 기준일 다음 날 이후여야 합니다.")
+            if fields["inbound_date"] is not None and not fields["inbound_units"]:
+                raise ValueError(f"상품 {index}행: 입고 예정일이 있으면 inbound_units를 1 이상 입력하세요.")
+            opening_raw = row.get("opening_date", "").strip()
+            try:
+                fields["opening_date"] = date.fromisoformat(opening_raw[:10]) if opening_raw else None
+            except ValueError as exc:
+                raise ValueError(f"상품 {index}행 opening_date: YYYY-MM-DD 형식으로 입력하세요.") from exc
+            problem = _period_problem(fields, snapshot_date)
+            if problem:
+                raise ValueError(f"상품 {index}행: {problem}")
             if row.get("lifecycle", "") not in {"", "regular", "summer_clearance", "fall_prelaunch", "winter_carryover"}:
                 raise ValueError(f"상품 {index}행 lifecycle: 허용되지 않는 상품 상태입니다.")
             products[sku] = {"row": row, "inputs": fields}
@@ -276,7 +308,14 @@ def analysis(dataset_id: int, as_of: date | None = None, section: str | None = N
                 "sections": [], "products": [], "daily_chart": [], "summary": {"total_products": 0,
                 "attention_count": 0, "units_30d": 0}}
     ids = [p.id for p in products]
-    min_day = min(start, day - timedelta(days=59), _previous_year(day) - timedelta(days=29))
+    inputs = {value.product_id: value for value in db.scalars(
+        select(WorkInputSnapshot).where(WorkInputSnapshot.product_id.in_(ids),
+                                        WorkInputSnapshot.as_of_date == day)).all()}
+    legacy_inputs = {value.product_id: value for value in db.scalars(
+        select(WorkProductInput).where(WorkProductInput.product_id.in_(ids),
+                                       WorkProductInput.as_of_date == day)).all()}
+    opening_days = [value.opening_date for value in [*inputs.values(), *legacy_inputs.values()] if value.opening_date]
+    min_day = min(start, day - timedelta(days=59), _previous_year(day) - timedelta(days=29), *opening_days)
     sale_rows = db.scalars(select(WorkDailySale).where(WorkDailySale.product_id.in_(ids),
                         WorkDailySale.sale_date.between(min_day, day))).all()
     by_product: dict[int, list[WorkDailySale]] = defaultdict(list)
@@ -285,12 +324,6 @@ def analysis(dataset_id: int, as_of: date | None = None, section: str | None = N
         by_product[row.product_id].append(row)
         if start <= row.sale_date <= day:
             chart[row.sale_date] += row.units
-    inputs = {value.product_id: value for value in db.scalars(
-        select(WorkInputSnapshot).where(WorkInputSnapshot.product_id.in_(ids),
-                                        WorkInputSnapshot.as_of_date == day)).all()}
-    legacy_inputs = {value.product_id: value for value in db.scalars(
-        select(WorkProductInput).where(WorkProductInput.product_id.in_(ids),
-                                       WorkProductInput.as_of_date == day)).all()}
     previous_day = _previous_year(day)
     sold_before = set(db.scalars(select(WorkDailySale.product_id).where(
         WorkDailySale.product_id.in_(ids), WorkDailySale.sale_date <= day, WorkDailySale.units > 0).distinct()))
@@ -339,6 +372,11 @@ def analysis(dataset_id: int, as_of: date | None = None, section: str | None = N
                       "observed_revenue_30d": round(observed_revenue, 2) if revenue_available else None,
                       "observed_gross_profit_30d": round(observed_profit, 2) if profit_available else None,
                       "stock_on_hand": stock, "inbound_units": inbound,
+                      "inbound_date": inp.inbound_date if valid_input else None,
+                      "opening_stock": inp.opening_stock if valid_input else None,
+                      "opening_date": inp.opening_date if valid_input else None,
+                      "received_units": inp.received_units if valid_input else None,
+                      "sell_through": _sell_through(dataset, inp if valid_input else None, rows, day),
                       "lead_time_days": inp.lead_time_days if valid_input else None,
                       "unit_price_krw": price, "unit_cost_krw": cost,
                       "reorderable": inp.reorderable if valid_input else None,
@@ -358,10 +396,30 @@ def analysis(dataset_id: int, as_of: date | None = None, section: str | None = N
                         "units_30d": sum(item["units_30d"] for item in items)}}
 
 
+def _sell_through(dataset: WorkDataset, inp, rows: list[WorkDailySale], day: date) -> dict:
+    """Measured only from company records: H&M stock is never entered as fact, and gaps in sales would hide units."""
+    if dataset.kind != "company":
+        return {"status": "not_applicable", "pct": None, "source": None,
+                "reason": "H&M 원본에는 재고가 없어 실측 판매율을 계산하지 않습니다. 운영 시뮬레이션에서 가상 판매율을 확인하세요."}
+    if inp is None or inp.opening_date is None:
+        return {"status": "missing", "pct": None, "source": None,
+                "reason": "기초재고·기초재고일·기간 입고를 입력하면 실측 판매율을 계산합니다."}
+    if not dataset.complete_calendar or inp.opening_date < dataset.start_date:
+        return {"status": "missing", "pct": None, "source": None, "start": inp.opening_date, "end": day,
+                "reason": "기초재고일부터 기준일까지의 판매 기록이 모두 있다고 확인된 경우에만 계산합니다."}
+    sold = _units(rows, inp.opening_date, day)
+    result = sell_through(opening=inp.opening_stock, received=inp.received_units, sold=sold, closing=inp.stock_on_hand)
+    return {**result, "start": inp.opening_date, "end": day, "source": "자사 기록" if result["pct"] is not None else None}
+
+
 class WorkInputPayload(BaseModel):
     as_of_date: date
     stock_on_hand: int | None = Field(default=None, ge=0)
     inbound_units: int | None = Field(default=None, ge=0)
+    inbound_date: date | None = None
+    opening_stock: int | None = Field(default=None, ge=0)
+    opening_date: date | None = None
+    received_units: int | None = Field(default=None, ge=0)
     lead_time_days: int | None = Field(default=None, ge=0)
     unit_price_krw: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     unit_cost_krw: float | None = Field(default=None, ge=0, allow_inf_nan=False)
@@ -374,6 +432,11 @@ def update_inputs(dataset_id: int, sku: str, payload: WorkInputPayload, db: Sess
     dataset = _dataset(dataset_id, db)
     if not dataset.start_date <= payload.as_of_date <= dataset.end_date:
         raise HTTPException(400, "입력 기준일은 판매 데이터 기간 안에서 선택하세요.")
+    if payload.inbound_date is not None and payload.inbound_date <= payload.as_of_date:
+        raise HTTPException(400, "입고 예정일은 기준일 다음 날 이후로 입력하세요. 이미 들어온 수량은 현재고에 넣으세요.")
+    problem = _period_problem(payload.model_dump(), payload.as_of_date)
+    if problem:
+        raise HTTPException(400, problem)
     product = _product(dataset_id, sku, db)
     inp = db.get(WorkProductInput, product.id)
     if inp is None:
@@ -416,19 +479,42 @@ def _compare(payload: WorkComparePayload, db: Session) -> dict:
         raise HTTPException(400, "재발주 가능 여부가 확인된 상품만 추가 매입을 가정할 수 있습니다.")
     if payload.as_of_date > dataset.end_date:
         raise HTTPException(400, "판매 기록 이후의 기준일은 비교할 수 없습니다.")
-    available = inp.stock_on_hand + (inp.inbound_units or 0) + payload.purchase_units
+    horizon_end = payload.as_of_date + timedelta(days=HORIZON_DAYS)
+    receipts, excluded, inbound_counted = [], [], 0
+    if inp.inbound_units:
+        if inp.inbound_date is None:
+            excluded.append(f"입고 예정 {inp.inbound_units}개는 입고 예정일이 없어 30일 가용 수량에서 제외했습니다.")
+        elif inp.inbound_date > horizon_end:
+            excluded.append(f"입고 예정 {inp.inbound_units}개는 {inp.inbound_date} 도착이라 30일 가용 수량에서 제외했습니다.")
+        else:
+            receipts.append((inp.inbound_date, inp.inbound_units))
+            inbound_counted = inp.inbound_units
+    purchase_arrival = None
+    if payload.purchase_units:
+        if inp.lead_time_days is None:
+            excluded.append("입고 소요일이 없어 추가 매입을 30일 가용 수량에서 제외했습니다.")
+        else:
+            purchase_arrival = payload.as_of_date + timedelta(days=inp.lead_time_days)
+            receipts.append((purchase_arrival, payload.purchase_units))
+            if inp.lead_time_days > HORIZON_DAYS:
+                excluded.append(f"추가 매입은 {purchase_arrival} 도착 예정이라 30일 가용 수량에서 제외했습니다.")
+    check = check_daily_availability(payload.as_of_date, inp.stock_on_hand, receipts, payload.expected_units_30d)
+    available = check["available_units"]
     price = round(inp.unit_price_krw * (1 - payload.discount_pct / 100), 2)
-    feasible = payload.expected_units_30d <= available
+    feasible = check["feasible"]
     profit = round(payload.expected_units_30d * (price - inp.unit_cost_krw), 2) if feasible else None
     return {"sku": product.sku, "dataset_kind": dataset.kind, "as_of_date": payload.as_of_date,
             "source": "H&M 관측 판매 + 사용자 시뮬레이션" if dataset.kind == "hm" else "자사 판매 + MD 입력 시나리오",
             "discount_pct": payload.discount_pct, "expected_units_30d": payload.expected_units_30d,
-            "purchase_units": payload.purchase_units, "available_units": available,
+            "purchase_units": payload.purchase_units, "purchase_arrival_date": purchase_arrival,
+            "available_units": available, "stock_and_inbound_units": inp.stock_on_hand + inbound_counted,
             "proposed_unit_price_krw": price, "feasible": feasible,
+            "first_gap_date": check["first_gap_date"], "max_gap_units": check["max_gap_units"],
+            "receipts_counted": check["receipts_counted"], "excluded_notes": excluded,
             "estimated_revenue_krw": round(payload.expected_units_30d * price, 2) if feasible else None,
             "estimated_gross_profit_krw": profit,
             "estimated_remaining_units": available - payload.expected_units_30d if feasible else None,
-            "note": "입력한 예상 판매량을 가정한 계산입니다. 할인 효과나 실제 매출 증가를 검증한 결과가 아닙니다."}
+            "note": "입력한 예상 판매량을 가정한 계산입니다. 할인 효과나 실제 매출 증가를 검증한 결과가 아닙니다. " + EVEN_SPREAD_NOTE}
 
 
 @router.post("/compare")
@@ -445,7 +531,8 @@ class WorkDecisionPayload(WorkComparePayload):
 def save_decision(payload: WorkDecisionPayload, db: Session = Depends(get_db)):
     calculated = _compare(payload, db)
     if not calculated["feasible"]:
-        raise HTTPException(400, "가정 판매량이 가용 재고보다 많습니다. 수량을 수정하세요.")
+        raise HTTPException(400, f"{calculated['first_gap_date']}부터 재고가 비어 가정 판매량을 공급할 수 없습니다 "
+                                 f"(최대 {calculated['max_gap_units']}개 부족). 수량이나 입고 시점을 수정하세요.")
     product = _product(payload.dataset_id, payload.sku, db)
     rows = db.scalars(select(WorkDailySale).where(WorkDailySale.product_id == product.id,
         WorkDailySale.sale_date.between(payload.as_of_date - timedelta(days=13), payload.as_of_date))).all()
@@ -454,7 +541,7 @@ def save_decision(payload: WorkDecisionPayload, db: Session = Depends(get_db)):
                             observed_units_14d=sum(row.units for row in rows),
                             discount_pct=payload.discount_pct, expected_units_30d=payload.expected_units_30d,
                             purchase_units=payload.purchase_units,
-                            assumed_stock=calculated["available_units"] - payload.purchase_units,
+                            assumed_stock=calculated["stock_and_inbound_units"],
                             estimated_gross_profit=calculated["estimated_gross_profit_krw"])
     db.add(decision)
     db.commit()

@@ -81,7 +81,7 @@ class HmSimulationTests(unittest.TestCase):
         scenario = self.scenario()
         skus = self.db.scalars(select(WorkProduct.sku).join(WorkSimPolicy, WorkSimPolicy.product_id == WorkProduct.id)
                                .where(WorkSimPolicy.scenario_id == scenario.id)).all()
-        self.assertEqual(len(skus), 50)
+        self.assertEqual(len(skus), len(self.policy))
         self.assertTrue(all(len(sku) == 10 and sku.startswith("0") for sku in skus))
         stored = Counter()
         for product_id, day, units in self.db.execute(select(WorkDailySale.product_id, WorkDailySale.sale_date, WorkDailySale.units)):
@@ -149,19 +149,23 @@ class HmSimulationTests(unittest.TestCase):
 
     def test_unobserved_products_are_not_called_stable(self):
         scenario = self.scenario()
-        unobserved = {row["sku"] for row in self.policy if not row["observed_first_sale_date"]}
-        self.assertEqual(len(unobserved), 4)
+        # The sample is chosen from July-August sales, so every product has sold; erase one product's history up to
+        # the judgment date to check that "no observed sales" is reported as such rather than as stable.
+        sku = self.policy[0]["sku"]
+        self.db.execute(delete(WorkDailySale).where(WorkDailySale.product_id == self.ids[sku],
+                                                    WorkDailySale.sale_date <= AS_OF))
+        self.db.commit()
+        unobserved = {sku}
         products = {p["sku"]: p for p in sim.analysis(scenario.id, self.db)["products"]}
-        for sku in unobserved:
-            self.assertEqual(products[sku]["signal"]["risk"], "not_observed")
-            self.assertIn("가상", products[sku]["conditions"]["lifecycle_label"])
+        self.assertEqual(products[sku]["signal"]["risk"], "not_observed")
+        self.assertIsNone(products[sku]["signal"]["days_of_cover"])
         observed_view = {p["sku"]: p for p in work_analysis(self.dataset_id, AS_OF, None, None, self.db)["products"]}
         self.assertTrue(all(observed_view[sku]["risk"] == "not_observed" for sku in unobserved))
 
     def test_every_value_carries_its_source(self):
         scenario = self.scenario()
         result = sim.analysis(scenario.id, self.db)
-        self.assertIn("9월 판매가 이미 반영", result["scenario"]["bias_note"])
+        self.assertIn("8월 31일) 이후 판매는 선정에 쓰지 않았습니다", result["scenario"]["bias_note"])
         for item in result["products"]:
             self.assertEqual(item["observed"]["source"], "H&M 관측")
             self.assertEqual(item["conditions"]["source"], "가상 운영 조건")
@@ -192,6 +196,90 @@ class HmSimulationTests(unittest.TestCase):
         stored = sim.decisions(scenario.id, self.db)[0]
         self.assertNotEqual(changed["estimated_gross_profit_krw"], stored["snapshot"]["comparison"]["estimated_gross_profit_krw"])
         self.assertEqual(stored["snapshot"], snapshot)
+
+    def test_compare_checks_stock_day_by_day_against_planned_receipts(self):
+        scenario = self.scenario()
+        products = sim.analysis(scenario.id, self.db)["products"]
+        # The product whose planned receipts dwarf its as-of stock: the 30-day total fits, the early days do not.
+        late = max((p for p in products if p["conditions"]["planned_inbound_30d"]),
+                   key=lambda p: p["conditions"]["planned_inbound_30d"] / (p["conditions"]["stock_on_hand"] + 1))
+        total = late["conditions"]["stock_on_hand"] + late["conditions"]["planned_inbound_30d"]
+        payload = sim.SimDecisionPayload(scenario_id=scenario.id, sku=late["sku"], discount_pct=0,
+                                         expected_units_30d=total, action="현재 유지",
+                                         rationale="계획 입고 전 재고 공백을 확인합니다.")
+        result = sim.compare(payload, self.db)
+        # The 30-day total equals the available units, yet the only receipt lands on 9/28.
+        self.assertEqual(result["available_units_30d"], total)
+        self.assertFalse(result["feasible"])
+        self.assertIsNotNone(result["first_gap_date"])
+        self.assertIsNone(result["estimated_gross_profit_krw"])
+        with self.assertRaises(HTTPException) as error:
+            sim.save_decision(payload, self.db)
+        self.assertIn(str(result["first_gap_date"]), error.exception.detail)
+
+    def test_sell_through_is_simulated_from_the_ledger_before_as_of(self):
+        scenario = self.scenario()
+        products = sim.analysis(scenario.id, self.db)["products"]
+        for item in products:
+            st = item["sell_through"]
+            self.assertEqual((st["status"], st["source"], st["end"]), ("ok", "시뮬레이션", AS_OF))
+            self.assertEqual(st["opening_stock"] + st["received_units"] - st["sold_units"], st["closing_stock"])
+            self.assertEqual(st["closing_stock"], item["conditions"]["stock_on_hand"])
+        sku = next(p["sku"] for p in products if p["conditions"]["stock_on_hand"] >= 10)
+        saved = sim.save_decision(sim.SimDecisionPayload(
+            scenario_id=scenario.id, sku=sku, discount_pct=0, expected_units_30d=1, action="현재 유지",
+            rationale="가상 판매율을 함께 기록합니다."), self.db)
+        self.assertEqual(saved["snapshot"]["sell_through"]["source"], "시뮬레이션")
+        self.assertEqual(saved["snapshot"]["sell_through"]["end"], AS_OF.isoformat())
+
+    def test_retrospective_sets_later_days_beside_the_as_of_judgment(self):
+        scenario = self.scenario()
+        result = sim.analysis(scenario.id, self.db)
+        retro, post = result["retrospective"], result["post_as_of_summary"]
+        self.assertEqual(retro["post_days"], 22)
+        self.assertEqual(sum(g["products"] for g in retro["groups"]), len(self.policy))
+        self.assertEqual(sum(g["policy_shortfall_units"] for g in retro["groups"]), post["policy_shortfall_units"])
+        self.assertEqual({g["risk"] for g in retro["groups"]}, set(result["summary"]["risk_counts"]))
+        self.assertFalse(any(key in g for g in retro["groups"] for key in ("accuracy", "hit_rate", "correct")))
+        self.assertIn("채점한 표가 아닙니다", retro["note"])
+        before = {g["risk"]: (g["products"], g["before_daily_units"], g["as_of_stock"]) for g in retro["groups"]}
+        # Later sales move only the after-columns; the as-of side of the table stays fixed.
+        self.db.execute(update(WorkDailySale).where(WorkDailySale.sale_date > AS_OF).values(units=WorkDailySale.units * 3))
+        self.db.commit()
+        changed = sim.analysis(scenario.id, self.db)["retrospective"]["groups"]
+        self.assertEqual({g["risk"]: (g["products"], g["before_daily_units"], g["as_of_stock"]) for g in changed}, before)
+
+    def test_forecast_uses_only_sales_known_on_the_judgment_date(self):
+        scenario = self.scenario()
+        # Give last year a pooled 10/day → 8/day pattern; setUp's first-sale rows may add a little to it.
+        pid = self.ids[self.policy[0]["sku"]]
+        for offset in range(14):
+            self.db.add(WorkDailySale(product_id=pid, sale_date=date(2019, 8, 18 + offset), channel="1", units=10))
+        for day in range(1, 23):
+            self.db.add(WorkDailySale(product_id=pid, sale_date=date(2019, 9, day), channel="1", units=8))
+        self.db.commit()
+        result = sim.forecast(scenario.id, self.db)
+        last_year = lambda start, end: self.db.scalar(select(func.sum(WorkDailySale.units)).where(
+            WorkDailySale.sale_date.between(start, end)))
+        expected = round((last_year(date(2019, 9, 1), date(2019, 9, 22)) / 22)
+                         / (last_year(date(2019, 8, 18), date(2019, 8, 31)) / 14), 3)
+        self.assertEqual(result["seasonal_factor"], expected)
+        self.assertAlmostEqual(expected, 0.8, delta=0.02)
+        self.assertEqual(result["horizon_days"], 22)
+        rows = {row["sku"]: row for row in result["products"]}
+        self.assertEqual(len(rows), len(self.policy))
+        for row in rows.values():
+            self.assertAlmostEqual(row["estimate"]["seasonal"], row["estimate"]["velocity"] * expected, delta=0.1)
+        validation = result["validation"]
+        self.assertEqual(validation["velocity"]["actual_units"], validation["seasonal"]["actual_units"])
+        # Changing September changes only the actual side.
+        self.db.execute(update(WorkDailySale).where(WorkDailySale.sale_date > AS_OF).values(units=WorkDailySale.units * 2))
+        self.db.commit()
+        changed = sim.forecast(scenario.id, self.db)
+        self.assertEqual({r["sku"]: r["estimate"] for r in changed["products"]},
+                         {sku: row["estimate"] for sku, row in rows.items()})
+        self.assertEqual(changed["validation"]["seasonal"]["estimated_units"], validation["seasonal"]["estimated_units"])
+        self.assertEqual(changed["validation"]["seasonal"]["actual_units"], 2 * validation["seasonal"]["actual_units"])
 
     def test_routes_are_exposed_and_import_is_not_the_company_upload(self):
         def override():
@@ -224,8 +312,10 @@ class RealDatabaseImportTest(unittest.TestCase):
                         self.skipTest("copy already contains the scenario")
                     scenario = import_simulation(db, dataset.id)
                     result = sim.analysis(scenario.id, db)
-                    self.assertEqual(result["summary"]["total_products"], 50)
-                    self.assertEqual(result["post_as_of_summary"]["observed_units"], 15520)
+                    ledger = read_case("hm_inventory_ledger.csv")
+                    self.assertEqual(result["summary"]["total_products"], len(read_case("hm_product_policy.csv")))
+                    self.assertEqual(result["post_as_of_summary"]["observed_units"],
+                                     sum(int(r["units_sold_observed"]) for r in ledger if r["date"] > AS_OF.isoformat()))
             finally:
                 engine.dispose()
 

@@ -11,13 +11,19 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import (WorkDailySale, WorkDataset, WorkProduct, WorkSimDecision, WorkSimLedger, WorkSimPolicy,
                       WorkSimPrice, WorkSimPurchaseOrder, WorkSimScenario)
+from ..services.demand_estimate import METHOD_LABELS, error_summary, estimate, seasonal_factor, windows
 from ..services.hm_simulation import import_simulation
+from ..services.sell_through import sell_through
+from ..services.stock_timeline import EVEN_SPREAD_NOTE, HORIZON_DAYS, check_daily_availability
 from ..services.work_risk import RISK_PRIORITY, classify_work_risk
 
 router = APIRouter(prefix="/api/work/sim", tags=["H&M operating simulation"])
 SOURCES = {"sales": "H&M 관측", "conditions": "가상 운영 조건", "results": "시뮬레이션"}
 SHORTFALL_NOTE = ("가상 정책상 공급 부족분 = 이후 관측 판매 중 8월 31일의 가상 재고와 계획 입고로 공급할 수 없었던 수량. "
                   "실제 H&M 품절이나 잃은 매출이 아닙니다.")
+RETRO_NOTE = ("8월 31일 판정을 채점한 표가 아닙니다. 판정 유형별로 이후 관측된 판매와 가상 재고 흐름을 나란히 놓은 회고입니다. "
+              "H&M 표본은 7~8월 판매 상위 상품이라 9월 판매도 비교적 잘 이어지는 상품에 치우쳐 있습니다. "
+              "공급 부족분은 8월 31일 이후 새 발주를 넣지 않은 가상 규칙의 결과이기도 합니다.")
 LIFECYCLE_LABELS = {"fall_new_scenario": "가을 신상 (가상 상태)", "summer_clearance_scenario": "여름 잔여 (가상 상태)",
                     "winter_carryover_scenario": "작년 겨울 행사 (가상 상태)", "unassigned": "상태 미부여"}
 
@@ -116,6 +122,10 @@ def _product_states(scenario: WorkSimScenario, db: Session, only_product: int | 
                 segment = _price_on(prices[product.id], row.flow_date)
                 sim_revenue += row.supplied_units * segment.selling_price_krw
                 sim_profit += row.supplied_units * (segment.selling_price_krw - segment.unit_cost_krw)
+        season = [row for row in ledger if row.flow_date <= as_of]
+        # Units that left the synthetic stock (supplied), not observed demand: the two differ once stock runs out.
+        season_sell = sell_through(opening=season[0].opening_stock, received=sum(row.inbound_units for row in season),
+                                   sold=sum(row.supplied_units for row in season), closing=stock)
         post = [row for row in ledger if row.flow_date > as_of]
         first_short = next((row.flow_date for row in post if row.shortfall_units), None)
         states.append({
@@ -133,6 +143,8 @@ def _product_states(scenario: WorkSimScenario, db: Session, only_product: int | 
             "signal": {"risk": risk, "reason": reason, "action": action, "days_of_cover": cover,
                        "simulated_revenue_30d_krw": round(sim_revenue, 2),
                        "simulated_gross_profit_30d_krw": round(sim_profit, 2), "source": SOURCES["results"]},
+            "sell_through": {**season_sell, "start": season[0].flow_date, "end": as_of, "source": SOURCES["results"],
+                             "label": "가상 운영 조건의 판매율"},
             "post_as_of": {"start": as_of + timedelta(1), "end": scenario.ledger_end,
                            "observed_units": sum(row.observed_units for row in post),
                            "supplied_units": sum(row.supplied_units for row in post),
@@ -149,6 +161,30 @@ def _product_states(scenario: WorkSimScenario, db: Session, only_product: int | 
 
 def _public(state: dict) -> dict:
     return {key: value for key, value in state.items() if not key.startswith("_")}
+
+
+def _retrospective(states: list[dict], post_days: int) -> dict:
+    """Group the as-of judgment by risk and set the later observed days beside it; no hit-rate is computed."""
+    groups: dict[str, list[dict]] = defaultdict(list)
+    for state in states:
+        groups[state["signal"]["risk"]].append(state)
+    rows = []
+    for risk in sorted(groups, key=RISK_PRIORITY.__getitem__):
+        items = groups[risk]
+        before = sum(s["observed"]["units_14d"] for s in items) / 14
+        after = sum(s["post_as_of"]["observed_units"] for s in items) / post_days
+        rows.append({"risk": risk, "products": len(items),
+                     "before_daily_units": round(before, 1), "after_daily_units": round(after, 1),
+                     "daily_change_pct": round((after - before) / before * 100, 1) if before else None,
+                     "products_sold_after": sum(s["post_as_of"]["observed_units"] > 0 for s in items),
+                     "products_with_shortfall": sum(s["post_as_of"]["policy_shortfall_units"] > 0 for s in items),
+                     "policy_shortfall_units": sum(s["post_as_of"]["policy_shortfall_units"] for s in items),
+                     "as_of_stock": sum(s["conditions"]["stock_on_hand"] for s in items),
+                     "end_stock": sum(s["post_as_of"]["closing_stock"] for s in items)})
+    return {"post_days": post_days, "groups": rows, "note": RETRO_NOTE,
+            "sources": {"before_daily_units": SOURCES["sales"], "after_daily_units": SOURCES["sales"],
+                        "policy_shortfall_units": SOURCES["results"], "as_of_stock": SOURCES["conditions"],
+                        "end_stock": SOURCES["results"]}}
 
 
 @router.get("/analysis")
@@ -170,7 +206,63 @@ def analysis(scenario_id: int, db: Session = Depends(get_db)):
                                    "observed_units": post_observed, "supplied_units": post_observed - post_short,
                                    "policy_shortfall_units": post_short,
                                    "products_with_shortfall": sum(s["post_as_of"]["policy_shortfall_units"] > 0 for s in states),
-                                   "note": SHORTFALL_NOTE}}
+                                   "note": SHORTFALL_NOTE},
+            "retrospective": _retrospective(states, (scenario.ledger_end - scenario.as_of_date).days)}
+
+
+FORECAST_NOTE = ("추정은 8월 31일까지 알 수 있던 판매만 사용합니다. 작년 계절 보정 계수는 2019년 표본 전체의 "
+                 "9/1~9/22 일평균 ÷ 8/18~8/31 일평균입니다. 9월 실제 판매는 추정이 끝난 뒤 비교에만 씁니다. "
+                 "상품 하나하나의 오차는 크며, 합계가 맞는다고 상품별 추정이 맞는 것은 아닙니다.")
+
+
+def _window_units(db: Session, dataset_id: int, start: date, end: date) -> dict[int, int]:
+    rows = db.execute(select(WorkDailySale.product_id, func.sum(WorkDailySale.units))
+                      .join(WorkProduct, WorkProduct.id == WorkDailySale.product_id)
+                      .where(WorkProduct.dataset_id == dataset_id, WorkDailySale.sale_date.between(start, end))
+                      .group_by(WorkDailySale.product_id)).all()
+    return {product_id: units for product_id, units in rows}
+
+
+@router.get("/forecast")
+def forecast(scenario_id: int, db: Session = Depends(get_db)):
+    """Estimate the days after the judgment date from earlier sales, then set the observed days beside it.
+
+    The check covers every H&M product that sold in the 28 days to the judgment date, not only the simulated ones."""
+    scenario = _scenario(scenario_id, db)
+    as_of, horizon = scenario.as_of_date, (scenario.ledger_end - scenario.as_of_date).days
+    span = windows(as_of, horizon)
+    units = {key: _window_units(db, scenario.dataset_id, *value) for key, value in span.items()}
+    recent28 = _window_units(db, scenario.dataset_id, as_of - timedelta(27), as_of)
+    factor = seasonal_factor(sum(units["base_last_year"].values()), sum(units["after_last_year"].values()), horizon)
+    checked = [pid for pid, value in recent28.items() if value > 0]
+    estimates = {pid: estimate(units["recent"].get(pid, 0), horizon, factor) for pid in checked}
+    validation = {method: error_summary([(estimates[pid][method], units["after"].get(pid, 0)) for pid in checked])
+                  for method in METHOD_LABELS if factor is not None or method == "velocity"}
+    rows = []
+    for state in _product_states(scenario, db):
+        pid, conditions = state["product_id"], state["conditions"]
+        guess = estimate(units["recent"].get(pid, 0), horizon, factor)
+        receipts = [(po.expected_receipt_date, po.ordered_units) for po in state["_orders"]
+                    if po.order_date <= as_of < po.expected_receipt_date]
+        # Day by day, so receipts late in the window cannot hide an early gap.
+        check = (check_daily_availability(as_of, conditions["stock_on_hand"], receipts, round(guess["seasonal"]), horizon)
+                 if guess["seasonal"] is not None else None)
+        supply = check["available_units"] if check else None
+        rows.append({"sku": state["sku"], "name": state["name"], "risk": state["signal"]["risk"],
+                     "recent_14d_units": units["recent"].get(pid, 0), "estimate": guess,
+                     "supply_until_end": supply, "expected_gap_units": check["max_gap_units"] if check else None,
+                     "first_gap_date": check["first_gap_date"] if check else None,
+                     "purchase_arrives_in_window": conditions["reorderable"] and conditions["lead_time_days"] <= horizon,
+                     "actual_units": state["post_as_of"]["observed_units"],
+                     "policy_shortfall_units": state["post_as_of"]["policy_shortfall_units"]})
+    rows.sort(key=lambda row: -(row["expected_gap_units"] or 0))
+    return {"as_of_date": as_of, "horizon_days": horizon, "windows": span, "seasonal_factor": factor,
+            "seasonal_reference": {"base_units": sum(units["base_last_year"].values()),
+                                   "after_units": sum(units["after_last_year"].values())},
+            "methods": METHOD_LABELS, "validation": {"products": len(checked), **validation},
+            "products": rows, "note": FORECAST_NOTE,
+            "sources": {"estimate": SOURCES["results"], "actual_units": SOURCES["sales"],
+                        "supply_until_end": SOURCES["conditions"]}}
 
 
 def _sim_product(scenario: WorkSimScenario, sku: str, db: Session) -> dict:
@@ -221,25 +313,31 @@ def _compare(payload: SimComparePayload, db: Session) -> tuple[dict, dict, WorkS
     conditions = state["conditions"]
     if payload.purchase_units and not conditions["reorderable"]:
         raise HTTPException(400, "재발주 불가로 설정된 상품은 추가 매입을 가정할 수 없습니다.")
-    purchase_arrival = scenario.as_of_date + timedelta(conditions["lead_time_days"])
-    purchase_in_window = conditions["lead_time_days"] <= 30
-    available = (conditions["stock_on_hand"] + conditions["planned_inbound_30d"]
-                 + (payload.purchase_units if purchase_in_window else 0))
+    as_of = scenario.as_of_date
+    purchase_arrival = as_of + timedelta(conditions["lead_time_days"])
+    purchase_in_window = conditions["lead_time_days"] <= HORIZON_DAYS
+    receipts = [(po.expected_receipt_date, po.ordered_units) for po in state["_orders"]
+                if po.order_date <= as_of < po.expected_receipt_date]
+    if payload.purchase_units:
+        receipts.append((purchase_arrival, payload.purchase_units))
+    check = check_daily_availability(as_of, conditions["stock_on_hand"], receipts, payload.expected_units_30d)
     price = round(conditions["selling_price_krw"] * (1 - payload.discount_pct / 100), 2)
-    feasible = payload.expected_units_30d <= available
+    feasible = check["feasible"]
     result = {
-        "sku": payload.sku, "as_of_date": scenario.as_of_date, "discount_pct": payload.discount_pct,
+        "sku": payload.sku, "as_of_date": as_of, "discount_pct": payload.discount_pct,
         "expected_units_30d": payload.expected_units_30d, "purchase_units": payload.purchase_units,
         "purchase_arrival_date": purchase_arrival if payload.purchase_units else None,
         "purchase_counted_in_30d": purchase_in_window if payload.purchase_units else None,
-        "available_units_30d": available, "proposed_unit_price_krw": price, "unit_cost_krw": conditions["unit_cost_krw"],
-        "feasible": feasible,
+        "available_units_30d": check["available_units"], "proposed_unit_price_krw": price,
+        "unit_cost_krw": conditions["unit_cost_krw"], "feasible": feasible,
+        "first_gap_date": check["first_gap_date"], "max_gap_units": check["max_gap_units"],
+        "receipts_counted": check["receipts_counted"],
         "estimated_revenue_krw": round(payload.expected_units_30d * price, 2) if feasible else None,
         "estimated_gross_profit_krw": round(payload.expected_units_30d * (price - conditions["unit_cost_krw"]), 2) if feasible else None,
-        "estimated_remaining_units": available - payload.expected_units_30d if feasible else None,
+        "estimated_remaining_units": check["available_units"] - payload.expected_units_30d if feasible else None,
         "source": SOURCES["results"],
         "note": ("가용 수량 = 8월 31일 가상 재고 + 30일 안에 들어오는 계획 입고 + (리드타임이 30일 이내인 경우) 추가 매입. "
-                 "예상 판매량은 사용자가 넣은 가정이며, 할인 효과나 실제 H&M 매출이 아닙니다."),
+                 + EVEN_SPREAD_NOTE + " 예상 판매량은 사용자가 넣은 가정이며, 할인 효과나 실제 H&M 매출이 아닙니다."),
     }
     return result, state, scenario
 
@@ -266,19 +364,29 @@ def save_decision(payload: SimDecisionPayload, db: Session = Depends(get_db)):
         raise HTTPException(422, "판단 이유를 다섯 글자 이상 입력하세요.")
     result, state, scenario = _compare(payload, db)
     if not result["feasible"]:
-        raise HTTPException(400, "가정 판매량이 30일 가용 수량보다 많습니다. 수량을 수정하세요.")
+        raise HTTPException(400, _gap_message(result))
     snapshot = {"scenario": {"id": scenario.id, "name": scenario.name, "as_of_date": scenario.as_of_date.isoformat()},
                 "observed": {**state["observed"], "first_sale_date": _iso(state["observed"]["first_sale_date"])},
                 "conditions": {**state["conditions"], "reorder_stop_date": _iso(state["conditions"]["reorder_stop_date"])},
                 "signal": state["signal"],
+                "sell_through": {**state["sell_through"], "start": _iso(state["sell_through"]["start"]),
+                                 "end": _iso(state["sell_through"]["end"])},
                 "comparison": {**result, "as_of_date": scenario.as_of_date.isoformat(),
-                               "purchase_arrival_date": _iso(result["purchase_arrival_date"])},
+                               "purchase_arrival_date": _iso(result["purchase_arrival_date"]),
+                               "first_gap_date": _iso(result["first_gap_date"]),
+                               "receipts_counted": [{"date": r["date"].isoformat(), "units": r["units"]}
+                                                    for r in result["receipts_counted"]]},
                 "bias_note": scenario.bias_note}
     decision = WorkSimDecision(scenario_id=scenario.id, product_id=state["product_id"], as_of_date=scenario.as_of_date,
                                action=payload.action, rationale=payload.rationale.strip(), snapshot=snapshot)
     db.add(decision)
     db.commit()
     return _decision_out(decision, state["sku"], state["name"])
+
+
+def _gap_message(result: dict) -> str:
+    return (f"{result['first_gap_date']}부터 재고가 비어 가정 판매량을 공급할 수 없습니다 "
+            f"(최대 {result['max_gap_units']}개 부족). 수량이나 입고 시점을 수정하세요.")
 
 
 def _iso(value: date | None) -> str | None:

@@ -14,7 +14,6 @@ Show how an apparel MD uses sales, cost, and stock to compare two possible actio
 
 ## Boundaries
 
-- Olist remains accessible as a separate practice/extension area. Preserve its data, routes, and source files.
 - The old seeded demo stays available as a secondary legacy workspace until its data can be migrated or retired safely.
 - The comparison is deterministic arithmetic. No external AI API is required or used.
 - Cost of goods is deducted from sold units to calculate gross profit; purchase cash commitment is shown separately. Fees, returns, advertising, and taxes are missing, so there is no net-profit claim.
@@ -22,9 +21,7 @@ Show how an apparel MD uses sales, cost, and stock to compare two possible actio
 
 ## Acceptance checks
 
-- Initial view opens the apparel case, and the navigation labels Olist as practice/extension.
 - A valid two-option comparison returns reproducible arithmetic without mutating products or sales.
 - Reorder-disabled items reject additional purchase assumptions.
 - Expected units beyond available stock are flagged, not silently converted into sales.
 - Invalid negative/non-finite inputs fail validation.
-- Existing Olist and demo APIs still pass tests.

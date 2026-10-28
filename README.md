@@ -12,7 +12,7 @@ This portfolio MVP is based on practical apparel MD workflows: sales velocity, s
 - MD actions are recorded. A completed action can show descriptive sales, revenue, and recorded gross-margin changes across equal 7-day windows when all daily records exist. Stock at logging and current stock are shown separately.
 - A separate short-form module turns an approved product/action brief into editable content drafts, which can be saved and reloaded locally. It is isolated so it can be extracted and reused by another product later.
 
-The default workspace can use a bounded H&M sales sample or an uploaded company CSV/XLSX pair. H&M sales are observed historical records; inventory, cost, and proposed actions are not part of that source. The older F/W apparel case remains available under **합성 사례**. Recommendations are decision support, not autonomous purchasing or a claim of proven business impact.
+The default workspace can use a bounded H&M sales sample or an uploaded company CSV/XLSX pair. H&M sales are observed historical records; inventory, cost, and proposed actions are not part of that source. The H&M view opens on the operating case: real sales combined with generated stand-ins for internal stock, purchase-order, price, and cost records. Recommendations are decision support, not autonomous purchasing or a claim of proven business impact.
 The short-form module currently produces text drafts through a fixed local template. It does not create video, call an external AI model, or publish posts.
 The action comparison is descriptive. Complete daily rows, including zero-sale days, are required for both windows; it cannot establish that the action caused any change. Sell-through rate is not computed without inventory snapshots for each period.
 
@@ -52,17 +52,12 @@ python scripts/import_hm.py --articles "C:\path\articles.csv.zip" --transactions
 
 This importer stores only a bounded apparel sample in SQLite and does not copy customer IDs or normalized H&M prices into the MD workspace. The full dataset and images are never committed. Matching local images may be placed in `frontend/public/hm_images/`, which is gitignored.
 
-## F/W apparel MD case
+## Internal-data design reference (retired F/W case)
 
-The working navigation now starts with **오늘의 할 일**, **전체 상품**, and **내 결정 기록**. All three use the same apparel product and decision records; **다음 시즌 기획** is a separate analysis view. The bundled data remains synthetic. Current input supports dated sales CSV updates and editing one product's stock, inbound quantity, price, and cost. It does not yet provide a complete real-company product/stock-ledger import or verified purchase-order workflow.
-
-Open **F/W 의류 MD 사례** and click **패션 사례 연결**. The app validates and saves the bundled synthetic 30-product, 60-day dataset in SQLite without replacing existing records. It separates summer clearance, prelaunch fall stock, and non-reorderable winter event products. The screen shows 7/30-day demand, prior-period units, stock cover, gross margin and margin rate, decision evidence, and a gross-profit arithmetic check for extra markdowns. An MD can edit current price, cost, and stock or upload corrected daily-sales rows; the analysis refreshes after saving. Historical margin stays tied to the dated sales rows. An MD can also save a decision and its reasoning alongside a snapshot of the numbers used. The inventory snapshot is dated 2026-08-31; the app does not project it backwards to other dates. See `docs/FASHION_CASE.md` and `sample_data/fashion_fw_case/DATA_QA.md`.
-
-At the bottom of the apparel case, click **운영 자료 연결** once. This validates and stores 1,800 synthetic daily stock-flow rows and 12 synthetic prior-season comparables in new tables, without replacing current product/sales edits. The planning panel then shows reconciled product-level 60-day sell-through, prior-year comparable sell-through, and adjustable growth/target sell-through assumptions for 2026FW initial buy review. Select a fall product, write the reason and conditions to check, then click **이 판단 저장** to keep a server-recalculated snapshot in the database. This does not place an order or change inventory. An edited product or sale can make the immutable ledger differ from the current inputs; the screen flags that difference. See `docs/FASHION_DATA_DESIGN.md` for formulas and limits.
+An earlier synthetic F/W apparel case invented sales as well as stock, cost, season status, and prior-season comparables. Its screens and API were removed: forecasting from invented sales says nothing about real demand. The H&M operating case now pairs **real H&M sales** with generated stand-ins for the internal records an MD needs but public data lacks. The F/W files under `sample_data/fashion_fw_case/` and `docs/FASHION_CASE.md`, `docs/FASHION_DATA_DESIGN.md` remain only as the design reference for those internal records (stock ledger with returns and adjustments, season status, prior-season comparison, target sell-through).
 
 ## Scope
 
-The active portfolio case is apparel merchandising. Public retail datasets and the former Olist practice workspace are outside the current product direction. Existing local database rows and source files are retained, but the Olist screen and API are not exposed.
 
 ## Project map
 
@@ -72,7 +67,8 @@ The active portfolio case is apparel merchandising. Public retail datasets and t
 - `docs/CSV_IMPORT.md` — supported sales CSV shape and replacement behavior.
 - `docs/BUILD_LOG.md` — two-day build scope and evidence boundaries.
 - `docs/PORTFOLIO_CASE_STUDY.md` — Korean walkthrough and accurate project ownership/impact description.
-- `docs/FASHION_DATA_DESIGN.md` — stock-flow reconciliation, prior-season comparables, scenario formulas, and limits.
+- `docs/WORKSPACE_DATA.md` — H&M operating case, company upload, estimates, and their limits.
+- `docs/FASHION_DATA_DESIGN.md` — retired case; design reference for internal stock-ledger and planning records.
 - `docs/superpowers/2026-10-27-ui-redesign.md` — UI goal and visual interpretation of the owner's reference image.
 - `docs/references/wellness-ui-reference.jfif` — owner-provided style reference, retained for design review; it is not used as a production screen asset.
 - `backend/app/services/analysis.py` — stock coverage and recommendation rules.

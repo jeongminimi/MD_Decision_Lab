@@ -92,18 +92,18 @@ textarea:focus-visible, summary:focus-visible {
 .editorial-subheading p { font-size: 15px; line-height: 1.5; }
 .heading-actions { gap: 8px; }
 
-.priority-section, .olist-spotlight { margin-bottom: 23px; }
+.priority-section { margin-bottom: 23px; }
 .editorial-section-heading { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-bottom: 17px; }
 .section-kicker { font-size: 11px; font-weight: 750; letter-spacing: .16em; color: #8a697e; }
 .editorial-section-heading h2 { margin: 5px 0 5px; font-family: Georgia, 'Noto Serif KR', serif; font-size: 31px; font-weight: 500; letter-spacing: -.05em; color: #292638; }
 .editorial-section-heading p { margin: 0; color: #676371; font-size: 14px; line-height: 1.5; }
 .priority-count { flex-shrink: 0; border: 1px solid #e6d9dd; background: #fff9fa; color: #574755; border-radius: 999px; padding: 7px 12px; font-size: 12px; font-weight: 700; }
-.priority-grid, .olist-spotlight-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 13px; }
+.priority-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 13px; }
 .priority-card { min-height: 234px; display: flex; flex-direction: column; align-items: stretch; gap: 10px; text-align: left; padding: 22px; border: 1px solid #e5d9df; border-radius: 22px; background: linear-gradient(145deg, #fff7f7, #f2e9f5 70%, #e8eaf4); color: #252432; box-shadow: 0 8px 25px rgba(73,55,82,.045); transition: transform .15s ease, box-shadow .15s ease; white-space: normal; }
 .priority-card:hover { transform: translateY(-3px); box-shadow: 0 15px 33px rgba(73,55,82,.12); }
-.priority-card.priority-overstock_risk, .olist-action-card.priority-overstock_risk { background: linear-gradient(145deg, #fff9ee, #f9e8df 70%, #f4dfdd); }
-.priority-card.priority-stockout_risk, .priority-card.priority-out_of_stock, .olist-action-card.priority-stockout_risk, .olist-action-card.priority-out_of_stock { background: linear-gradient(145deg, #fff6f4, #f4e1e4 65%, #e9dfef); }
-.priority-card.priority-data_insufficient, .olist-action-card.priority-data_insufficient { background: linear-gradient(145deg, #f7f8fc, #e7edf5 65%, #e7e4f4); }
+.priority-card.priority-overstock_risk { background: linear-gradient(145deg, #fff9ee, #f9e8df 70%, #f4dfdd); }
+.priority-card.priority-stockout_risk, .priority-card.priority-out_of_stock { background: linear-gradient(145deg, #fff6f4, #f4e1e4 65%, #e9dfef); }
+.priority-card.priority-data_insufficient { background: linear-gradient(145deg, #f7f8fc, #e7edf5 65%, #e7e4f4); }
 .priority-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 700; color: #675b69; }
 .priority-card > strong { font-size: 21px; letter-spacing: -.035em; line-height: 1.3; }
 .priority-reason { color: #44414e; font-size: 15px; line-height: 1.5; }
@@ -125,15 +125,15 @@ textarea:focus-visible, summary:focus-visible {
 
 .panel { border: 1px solid #ebe3df; border-radius: 20px; background: #fffdfa; box-shadow: 0 7px 26px rgba(64,54,61,.035); }
 .panel-heading { padding: 22px 23px 18px; }
-.panel-heading h2, .olist-section-title h2 { font-size: 21px; font-weight: 650; letter-spacing: -.04em; color: #2d2a37; }
-.panel-heading p, .olist-section-title p { font-size: 14px; line-height: 1.5; color: #676371; }
+.panel-heading h2 { font-size: 21px; font-weight: 650; letter-spacing: -.04em; color: #2d2a37; }
+.panel-heading p { font-size: 14px; line-height: 1.5; color: #676371; }
 .table-tools { gap: 10px; }
-.table-tools input, .table-tools select, .olist-section-title select { font-size: 14px; }
+.table-tools input, .table-tools select { font-size: 14px; }
 .data-table th { height: 45px; padding-inline: 14px; font-size: 13px; color: #615d6a; background: #faf6f4; }
 .data-table td { height: 70px; padding-inline: 14px; font-size: 14px; color: #35323e; }
 .data-table small, .data-table .cell-unit { font-size: 12px; }
-.product-cell b, .olist-product b { font-size: 14px; }
-.product-cell small, .olist-product small { font-size: 11px; }
+.product-cell b { font-size: 14px; }
+.product-cell small { font-size: 11px; }
 .risk-badge { font-size: 12px; line-height: 1.3; padding: 6px 9px; white-space: nowrap; }
 .recommendation-text, .coverage-cell { font-size: 13px; }
 .table-footer, .table-footer button { font-size: 13px; }
@@ -149,40 +149,13 @@ textarea:focus-visible, summary:focus-visible {
 .action-main b, .action-main p, .action-product, .action-main small, .action-outcome, .action-outcome p { font-size: 13px; }
 .mobile-nav-backdrop { display: none; }
 
-.olist-page { gap: 18px; }
-.olist-hero { margin-bottom: 5px !important; }
-.olist-spotlight { padding: 22px; border: 1px solid #e9e0df; border-radius: 23px; background: #fffdfa; }
-.olist-action-card { min-height: 205px; display: flex; flex-direction: column; gap: 10px; padding: 20px; border: 1px solid rgba(111,87,112,.11); border-radius: 19px; background: linear-gradient(145deg, #f8f5fc, #e7e7f3); }
-.olist-card-eyebrow { font-size: 12px; color: #615565; font-weight: 700; }
-.olist-action-card .risk-badge { align-self: flex-start; }
-.olist-action-card h3 { margin: 0; color: #292634; font-size: 18px; line-height: 1.4; letter-spacing: -.035em; }
-.olist-action-card p { margin: auto 0 0; color: #45404e; font-size: 14px; line-height: 1.5; }
-.olist-action-card p b { display: block; font-size: 12px; color: #766374; }
-.olist-action-card small { color: #676271; font-size: 12px; }
-.olist-action-card a { display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; color: #544668; font-size: 13px; font-weight: 750; text-decoration: none; }
-.olist-action-card a:hover { text-decoration: underline; }
-.olist-results { scroll-margin-top: 84px; }
 .evidence-legend { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 18px; padding-top: 17px; border-top: 1px solid #ece5e2; color: #5b5662; font-size: 12px; }
 .evidence-legend span { display: inline-flex; align-items: center; gap: 7px; }
 .evidence-legend i { width: 9px; height: 9px; border-radius: 50%; }
 .legend-observed { background: #729aa2; }.legend-assumed { background: #bc84ac; }.legend-estimated { background: #ce9b69; }
-.olist-page .panel { padding: 24px; }
-.olist-section-title { margin-bottom: 18px; }
-.olist-section-title > div > svg { color: #866997; }
-.olist-section-title select { min-height: 42px; padding: 8px 12px; border: 1px solid #e1d7d7; border-radius: 10px; background: #fffdfa; color: #393442; }
-.olist-facts span { padding: 12px 16px; border-radius: 12px; background: #f7f1ef; color: #635c67; font-size: 13px; }
-.olist-facts b { font-size: 17px; color: #302b37; }
-.olist-source-note { font-size: 13px; color: #66616c; }
-.olist-provenance span { padding: 9px 11px; border-radius: 9px; background: #f7f1f4; color: #5c5663; font-size: 12px; }
-.olist-provenance b { color: #765979; }
-.olist-reason { max-width: 320px; }
-.olist-reason summary { font-size: 13px; font-weight: 750; }
-.olist-reason p { font-size: 13px; line-height: 1.5; }
-.olist-compare-grid span { font-size: 13px; }
-.olist-compare-grid strong { font-size: 18px; }
 
 @media (max-width: 1180px) {
-  .priority-grid, .olist-spotlight-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .priority-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .editorial-hero .heading-actions { flex-wrap: wrap; }
   .hero-orb { right: -6%; opacity: .48; }
 }
@@ -202,7 +175,7 @@ textarea:focus-visible, summary:focus-visible {
   .editorial-hero { padding: 27px !important; min-height: 290px !important; }
   .editorial-hero .hero-copy { max-width: 80%; }
   .hero-orb { width: 250px; height: 250px; right: -12%; }
-  .priority-grid, .olist-spotlight-grid { grid-template-columns: 1fr; }
+  .priority-grid { grid-template-columns: 1fr; }
   .metric-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .editorial-subheading { flex-direction: column; align-items: stretch; }
 }
@@ -244,11 +217,7 @@ textarea:focus-visible, summary:focus-visible {
   .data-context { align-items: flex-start; flex-wrap: wrap; font-size: 13px; }
   .data-context button { margin: 3px 0 0 28px; }
   .panel-heading { padding: 18px; }
-  .panel-heading h2, .olist-section-title h2 { font-size: 19px; }
+  .panel-heading h2 { font-size: 19px; }
   .data-table th { font-size: 13px; }
   .data-table td { font-size: 14px; }
-  .olist-page .panel, .olist-spotlight { padding: 18px; }
-  .olist-facts { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); }
-  .olist-facts span { font-size: 12px; }
-  .olist-facts b { font-size: 14px; }
 }

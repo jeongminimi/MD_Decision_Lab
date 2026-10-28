@@ -11,7 +11,6 @@
 
 ## Global constraints
 
-- Never change observed Olist values or the user's SQLite data.
 - Historical sales, simulated inventory, and estimated margin remain explicitly labelled.
 - The reference image is a mood reference, not a production asset.
 - Maintain readable contrast and minimum 14px supporting/table text.
@@ -21,7 +20,6 @@
 - No scenario selected: show a clear next step without an empty analysis card.
 - Scenario with no urgent products: say there are no urgent alerts and still show reviewable products.
 - Long product labels and narrow screens: wrap without clipping actions.
-- Source assumptions: users must not mistake simulated stock for Olist stock.
 - Interactions: all existing CSV upload, download, comparison, and detail buttons remain reachable.
 
 ### Task 1: Visual system
@@ -39,18 +37,9 @@
 - [x] Show product, reason, and one next action in readable cards using existing ProductAnalysis values.
 - [x] Keep the existing data table for detailed review.
 
-### Task 3: Guided Olist analysis
-
-**Files:** Modify `frontend/src/OlistPage.tsx`, `frontend/src/editorial.css`.
-
-- [x] Make the real-sales/simulated-stock distinction prominent and plain-language.
-- [x] Show a short scenario summary and action cards before the numeric table.
-- [x] Keep CSV, comparison, and full numeric evidence available.
-
 ### Task 4: Verification and review
 
 **Files:** Update `docs/BUILD_LOG.md` and the plan checkboxes.
 
 - [x] Run frontend TypeScript check, CSS parsing, and backend tests. Vite launch attempted and failed with esbuild `spawn EPERM` in this shell.
-- [x] Browser visual QA of the desktop overview, Olist summary, and evidence navigation passed in a temporary static preview.
 - [x] Review code against the acceptance checks, including a narrow-screen browser check. Vite hot-reload remains unverified because this shell blocks esbuild child-process spawning.

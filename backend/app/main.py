@@ -5,8 +5,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import models  # noqa: F401 — registers SQLAlchemy metadata
 from .api.routes import router
-from .api.fashion_routes import router as fashion_router
-from .api.fashion_planning_routes import router as fashion_planning_router
 from .api.work_routes import router as work_router
 from .api.hm_sim_routes import router as hm_sim_router
 from .modules.shortform import models as shortform_models  # noqa: F401 — registers module table
@@ -36,8 +34,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(router)
-app.include_router(fashion_router)
-app.include_router(fashion_planning_router)
 app.include_router(work_router)
 app.include_router(hm_sim_router)
 

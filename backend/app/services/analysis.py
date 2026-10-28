@@ -4,7 +4,7 @@ from math import ceil
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import DailySale, MerchandisingContext, Product, ScenarioStock
+from ..models import DailySale, MerchandisingContext, Product
 from ..schemas import ProductAnalysis
 
 
@@ -18,7 +18,7 @@ RISK_LABELS = {
 }
 
 
-def analyze_product(product: Product, db: Session, today: date | None = None, stock: ScenarioStock | None = None) -> ProductAnalysis:
+def analyze_product(product: Product, db: Session, today: date | None = None) -> ProductAnalysis:
     today = today or date.today()
     context = db.get(MerchandisingContext, product.id)
     since = today - timedelta(days=29)
@@ -34,11 +34,11 @@ def analyze_product(product: Product, db: Session, today: date | None = None, st
     sales_days = sum(row.units_sold > 0 for row in rows)
     revenue = round(sum(row.revenue for row in rows), 2)
     margin_present = bool(rows) and all(row.gross_margin is not None or (row.units_sold == 0 and row.revenue == 0) for row in rows)
-    unit_cost = stock.unit_cost if stock is not None else product.unit_cost
-    stock_on_hand = stock.stock_on_hand if stock is not None else product.stock_on_hand
-    inbound_units = stock.inbound_units if stock is not None else product.inbound_units
-    lead_time_days = stock.lead_time_days if stock is not None else product.lead_time_days
-    target_cover_days = stock.target_cover_days if stock is not None else product.target_cover_days
+    unit_cost = product.unit_cost
+    stock_on_hand = product.stock_on_hand
+    inbound_units = product.inbound_units
+    lead_time_days = product.lead_time_days
+    target_cover_days = product.target_cover_days
     margin = sum(row.gross_margin if row.gross_margin is not None else row.revenue - row.units_sold * unit_cost for row in rows)
     avg_daily = units / 30
     avg_daily_7d = units_7d / 7
@@ -71,13 +71,6 @@ def analyze_product(product: Product, db: Session, today: date | None = None, st
 
     if context is not None and context.launch_date is not None and today < context.launch_date:
         risk, rec, reason, replenish = "data_insufficient", "출시 준비 상태 확인", "아직 출시 전이라 판매 속도로 수요나 발주량을 추정하지 않습니다. 초도 물량·입고 일정·노출 계획을 확인하세요.", None
-    elif stock is not None and units == 0:
-        risk, rec, reason, replenish = (
-            "slow_moving" if stock_on_hand > 0 else "data_insufficient",
-            "최근 판매 없음 — 상품 노출·수요 확인",
-            "선택한 Olist 30일 기간에 이 상품의 배송 완료 판매가 없습니다. 재고가 있어도 추가 매입 수량은 계산하지 않습니다.",
-            None,
-        )
     elif stock_on_hand <= 0:
         risk, rec, reason = "out_of_stock", "재고 확보 가능 여부 확인", "현재 판매 가능한 재고가 0개 이하입니다. 입고 예정 수량과 공급사 일정을 먼저 확인하세요."
         replenish = max(ceil(target_cover_days * decision_daily - inbound_units), 0) if decision_daily and replenishment_confident else None

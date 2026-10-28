@@ -20,10 +20,17 @@ export interface WorkProduct {
   units_30d: number; prior_30d: number; year_ago_30d: number | null;
   channel_units_30d: Record<string, number>;
   observed_revenue_30d: number | null; observed_gross_profit_30d: number | null;
-  stock_on_hand: number | null; inbound_units: number | null; lead_time_days: number | null;
+  stock_on_hand: number | null; inbound_units: number | null; inbound_date: string | null; lead_time_days: number | null;
+  opening_stock: number | null; opening_date: string | null; received_units: number | null; sell_through: SellThrough;
   unit_price_krw: number | null; unit_cost_krw: number | null; reorderable: boolean | null;
   input_source: string | null; input_as_of_date: string | null; days_of_cover: number | null;
   risk: string; reason: string; action: string;
+}
+
+export interface SellThrough {
+  status: "ok" | "missing" | "mismatch" | "no_supply" | "not_applicable"; pct: number | null; reason: string;
+  source: string | null; start?: string; end?: string; sold_units?: number; opening_stock?: number | null;
+  received_units?: number | null; closing_stock?: number | null; difference_units?: number | null; label?: string;
 }
 
 export interface WorkAnalysis {
@@ -35,8 +42,10 @@ export interface WorkAnalysis {
 
 export interface WorkComparison {
   sku: string; dataset_kind: string; source: string; discount_pct: number;
-  expected_units_30d: number; purchase_units: number; available_units: number;
-  proposed_unit_price_krw: number; feasible: boolean; estimated_revenue_krw: number | null;
+  expected_units_30d: number; purchase_units: number; purchase_arrival_date: string | null; available_units: number;
+  stock_and_inbound_units: number; proposed_unit_price_krw: number; feasible: boolean;
+  first_gap_date: string | null; max_gap_units: number; receipts_counted: { date: string; units: number }[];
+  excluded_notes: string[]; estimated_revenue_krw: number | null;
   estimated_gross_profit_krw: number | null; estimated_remaining_units: number | null; note: string;
 }
 
@@ -49,7 +58,8 @@ export interface WorkDecision {
 }
 
 export interface WorkInputs {
-  as_of_date: string; stock_on_hand: number | null; inbound_units: number | null;
+  as_of_date: string; stock_on_hand: number | null; inbound_units: number | null; inbound_date: string | null;
+  opening_stock: number | null; opening_date: string | null; received_units: number | null;
   lead_time_days: number | null; unit_price_krw: number | null;
   unit_cost_krw: number | null; reorderable: boolean | null; lifecycle: string | null;
 }
@@ -111,6 +121,7 @@ export interface SimProduct {
     lifecycle_label: string; list_price_krw: number; selling_price_krw: number; unit_cost_krw: number; source: string };
   signal: { risk: string; reason: string; action: string; days_of_cover: number | null;
     simulated_revenue_30d_krw: number; simulated_gross_profit_30d_krw: number; source: string };
+  sell_through: SellThrough;
   post_as_of: { start: string; end: string; observed_units: number; supplied_units: number;
     policy_shortfall_units: number; first_shortfall_date: string | null; closing_stock: number };
 }
@@ -121,6 +132,27 @@ export interface SimAnalysis {
     units_30d: number; simulated_gross_profit_30d_krw: number };
   post_as_of_summary: { start: string; end: string; observed_units: number; supplied_units: number;
     policy_shortfall_units: number; products_with_shortfall: number; note: string };
+  retrospective: SimRetrospective;
+}
+
+export interface SimForecast {
+  as_of_date: string; horizon_days: number; seasonal_factor: number | null;
+  windows: Record<"recent" | "after" | "base_last_year" | "after_last_year", [string, string]>;
+  seasonal_reference: { base_units: number; after_units: number };
+  methods: Record<"velocity" | "seasonal", string>; note: string; sources: Record<string, string>;
+  validation: { products: number } & Partial<Record<"velocity" | "seasonal",
+    { estimated_units: number; actual_units: number; wape_pct: number | null; bias_pct: number | null }>>;
+  products: { sku: string; name: string; risk: string; recent_14d_units: number;
+    estimate: { velocity: number; seasonal: number | null }; supply_until_end: number;
+    expected_gap_units: number | null; first_gap_date: string | null; purchase_arrives_in_window: boolean; actual_units: number;
+    policy_shortfall_units: number }[];
+}
+
+export interface SimRetrospective {
+  post_days: number; note: string; sources: Record<string, string>;
+  groups: { risk: string; products: number; before_daily_units: number; after_daily_units: number;
+    daily_change_pct: number | null; products_sold_after: number; products_with_shortfall: number;
+    policy_shortfall_units: number; as_of_stock: number; end_stock: number }[];
 }
 
 export interface SimProductDetail extends SimProduct {
@@ -138,6 +170,7 @@ export interface SimComparison {
   sku: string; as_of_date: string; discount_pct: number; expected_units_30d: number; purchase_units: number;
   purchase_arrival_date: string | null; purchase_counted_in_30d: boolean | null; available_units_30d: number;
   proposed_unit_price_krw: number; unit_cost_krw: number; feasible: boolean; estimated_revenue_krw: number | null;
+  first_gap_date: string | null; max_gap_units: number; receipts_counted: { date: string; units: number }[];
   estimated_gross_profit_krw: number | null; estimated_remaining_units: number | null; source: string; note: string;
 }
 
@@ -156,6 +189,7 @@ export const simApi = {
   scenarios: (datasetId: number) => call<SimScenario[]>(`/api/work/sim/scenarios?dataset_id=${datasetId}`),
   importSample: (datasetId: number) => call<SimScenario>(`/api/work/sim/import-sample?dataset_id=${datasetId}`, { method: "POST" }),
   analysis: (scenarioId: number) => call<SimAnalysis>(`/api/work/sim/analysis?scenario_id=${scenarioId}`),
+  forecast: (scenarioId: number) => call<SimForecast>(`/api/work/sim/forecast?scenario_id=${scenarioId}`),
   product: (scenarioId: number, sku: string) =>
     call<SimProductDetail>(`/api/work/sim/products/${encodeURIComponent(sku)}?scenario_id=${scenarioId}`),
   compare: (body: SimOption) => call<SimComparison>("/api/work/sim/compare", json(body)),

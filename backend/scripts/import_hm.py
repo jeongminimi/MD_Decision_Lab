@@ -1,7 +1,9 @@
 """Import a bounded, reproducible H&M sales sample without copying raw customer data.
 
-Run from backend/: python scripts/import_hm.py --articles PATH --transactions PATH
-The ZIP inputs stay outside this repository. A new dataset is created only once.
+Run from backend/: python scripts/import_hm.py --articles PATH --transactions PATH [--replace] [--images PATH]
+The ZIP inputs stay outside this repository. A new dataset is created only once unless --replace is given.
+Products are chosen from July 1 - August 31 sales only, so nothing after the 2020-08-31 judgment date
+decides which products enter the sample.
 """
 
 import argparse
@@ -15,21 +17,62 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from sqlalchemy import select  # noqa: E402
+from sqlalchemy import delete, select  # noqa: E402
 
 from app.database import Base, SessionLocal, engine  # noqa: E402
-from app.models import WorkDailySale, WorkDataset, WorkProduct  # noqa: E402
+from app.models import (WorkDailySale, WorkDataset, WorkDecision, WorkInputSnapshot, WorkProduct,  # noqa: E402
+                        WorkProductInput, WorkSimDecision, WorkSimLedger, WorkSimPolicy, WorkSimPrice,
+                        WorkSimPurchaseOrder, WorkSimScenario)
 
 SECTIONS = ("Womens Everyday Collection", "Womens Tailoring", "Womens Jackets")
 START, END = b"2019-01-01", b"2020-09-22"
+SELECTION_WINDOW = (b"-07-01", b"-08-31")  # month-day range ranked in each year; ends on the judgment date
+DATASET_NAME = "H&M 실제 판매 · MD 시연"
+IMAGE_DIR = Path(__file__).resolve().parents[2] / "frontend" / "public" / "hm_images"  # gitignored
 
 
-def run(articles_zip: Path, transactions_zip: Path, max_per_year: int) -> None:
+def link_images(images_zip: Path) -> None:
+    """Copy only the sampled products' photos out of images.zip and point each product at its file."""
+    IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+    db = SessionLocal()
+    try:
+        dataset_id = db.scalar(select(WorkDataset.id).where(WorkDataset.name == DATASET_NAME))
+        products = db.scalars(select(WorkProduct).where(WorkProduct.dataset_id == dataset_id)).all()
+        with zipfile.ZipFile(images_zip) as archive:
+            members = set(archive.namelist())
+            for product in products:
+                target = IMAGE_DIR / f"{product.sku}.jpg"
+                member = f"{product.sku[:3]}/{product.sku}.jpg"
+                if not target.exists() and member in members:
+                    target.write_bytes(archive.read(member))
+                product.image_ref = f"/hm_images/{product.sku}.jpg" if target.exists() else None
+        db.commit()
+        linked = sum(product.image_ref is not None for product in products)
+        print(f"사진 연결: {linked}/{len(products)}종 (사진이 없는 상품은 사진 없이 표시)")
+    finally:
+        db.close()
+
+
+def _delete_dataset(db, dataset_id: int) -> None:
+    """Remove one H&M dataset and everything that hangs off it, children first."""
+    product_ids = select(WorkProduct.id).where(WorkProduct.dataset_id == dataset_id)
+    scenario_ids = select(WorkSimScenario.id).where(WorkSimScenario.dataset_id == dataset_id)
+    for model in (WorkSimDecision, WorkSimLedger, WorkSimPolicy, WorkSimPrice, WorkSimPurchaseOrder):
+        db.execute(delete(model).where(model.scenario_id.in_(scenario_ids)))
+    db.execute(delete(WorkSimScenario).where(WorkSimScenario.dataset_id == dataset_id))
+    for model in (WorkDecision, WorkInputSnapshot, WorkProductInput, WorkDailySale):
+        db.execute(delete(model).where(model.product_id.in_(product_ids)))
+    db.execute(delete(WorkProduct).where(WorkProduct.dataset_id == dataset_id))
+    db.execute(delete(WorkDataset).where(WorkDataset.id == dataset_id))
+
+
+def run(articles_zip: Path, transactions_zip: Path, max_per_year: int, replace: bool = False) -> None:
     Base.metadata.create_all(engine)
     db = SessionLocal()
     try:
-        if db.scalar(select(WorkDataset.id).where(WorkDataset.name == "H&M 실제 판매 · MD 시연")):
-            print("H&M 시연 작업공간이 이미 있습니다. 기존 자료를 덮어쓰지 않았습니다.")
+        existing = db.scalar(select(WorkDataset.id).where(WorkDataset.name == DATASET_NAME))
+        if existing and not replace:
+            print("H&M 시연 작업공간이 이미 있습니다. 기존 자료를 덮어쓰지 않았습니다. 교체하려면 --replace를 붙이세요.")
             return
         with zipfile.ZipFile(articles_zip) as archive, archive.open("articles.csv") as raw:
             reader = csv.DictReader(io.TextIOWrapper(raw, encoding="utf-8-sig", newline=""))
@@ -51,7 +94,7 @@ def run(articles_zip: Path, transactions_zip: Path, max_per_year: int) -> None:
                 if day < START or day > END or article_id not in articles:
                     continue
                 daily[(article_id, day, channel)] += 1
-                if b"-07-01" <= day[4:] <= b"-09-22":
+                if SELECTION_WINDOW[0] <= day[4:] <= SELECTION_WINDOW[1]:
                     seasonal[(articles[article_id]["section_name"], day[:4], article_id)] += 1
                 if scanned % 5_000_000 == 0:
                     print(f"거래 {scanned:,}행 확인; 일별 묶음 {len(daily):,}개", flush=True)
@@ -64,11 +107,14 @@ def run(articles_zip: Path, transactions_zip: Path, max_per_year: int) -> None:
         selected_days = [(key, units) for key, units in daily.items() if key[0] in chosen]
         del daily
         print(f"선정 상품 {len(chosen):,}종; 일별·채널별 기록 {len(selected_days):,}행", flush=True)
-        dataset = WorkDataset(name="H&M 실제 판매 · MD 시연", kind="hm",
+        if existing:
+            _delete_dataset(db, existing)
+            print(f"기존 H&M 작업공간(dataset_id={existing})을 지우고 새 표본으로 교체합니다.", flush=True)
+        dataset = WorkDataset(name=DATASET_NAME, kind="hm",
                               start_date=date(2019, 1, 1), end_date=date(2020, 9, 22),
                               complete_calendar=True,
                               source_note=("H&M Kaggle 거래 기록. 여성복 3개 섹션에서 2019·2020년 "
-                                           f"7~9월 판매 상위 각 {max_per_year}종의 합집합. "
+                                           f"7월 1일~8월 31일 판매 상위 각 {max_per_year}종의 합집합. "
                                            "거래 행 수=판매 개수. 가격은 정규화 값이므로 원화 매출로 사용하지 않음. "
                                            "재고·원가·발주 정보는 제공되지 않음."))
         db.add(dataset)
@@ -108,7 +154,11 @@ if __name__ == "__main__":
     parser.add_argument("--articles", type=Path, required=True)
     parser.add_argument("--transactions", type=Path, required=True)
     parser.add_argument("--max-per-year", type=int, default=50)
+    parser.add_argument("--replace", action="store_true", help="기존 H&M 작업공간과 연결된 기록을 지우고 새로 만듭니다.")
+    parser.add_argument("--images", type=Path, help="images.zip 경로. 선정 상품의 사진만 frontend/public/hm_images로 복사합니다.")
     args = parser.parse_args()
     if not 1 <= args.max_per_year <= 200:
         parser.error("--max-per-year는 1~200 사이로 지정하세요.")
-    run(args.articles, args.transactions, args.max_per_year)
+    run(args.articles, args.transactions, args.max_per_year, args.replace)
+    if args.images:
+        link_images(args.images)
