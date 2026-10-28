@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+backend/.venv/
+.venv/
+env/
+venv/
+backend/md_decision_lab.db
+*.db
+
+# Node / Frontend
+node_modules/
+frontend/node_modules/
+frontend/.npm-cache/
+frontend/dist/
+dist/
+frontend/tsconfig.tsbuildinfo
+.vite/
+
+# Logs & temp
+*.log
+.system_generated/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

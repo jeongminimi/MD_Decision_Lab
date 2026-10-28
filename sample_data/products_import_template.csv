@@ -1,0 +1,3 @@
+sku,name,category,stock_on_hand,inbound_units,lead_time_days,target_cover_days,unit_price,unit_cost
+DEMO-101,시즌 블루종,아우터,28,12,10,40,129000,57000
+DEMO-102,데일리 니트 탑,니트,46,0,7,35,69000,28000

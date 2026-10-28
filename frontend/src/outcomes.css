@@ -1,0 +1,27 @@
+.action-outcome-toggle {
+  display: block;
+  border: 0;
+  background: transparent;
+  padding: 8px 0 0;
+  color: #416b50;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.action-outcome {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid #e1e9df;
+  border-radius: 8px;
+  background: #f7faf6;
+  color: #515b50;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.action-outcome > b { display: block; font-size: 11px; color: #314936; }
+.action-outcome p { margin: 6px 0; font-size: 10px; }
+.action-outcome small { display: block; color: #707d6e; font-size: 9px; }
+.action-outcome-grid { display: flex; gap: 12px; flex-wrap: wrap; margin: 10px 0; }
+.action-outcome-grid span { min-width: 125px; font-size: 10px; }
+.action-outcome-grid strong { display: block; font-size: 11px; color: #314936; }
