@@ -75,7 +75,7 @@ python sample_data/hm_operating_case/generate_hm_operating_case.py
 python sample_data/hm_operating_case/verify_hm_operating_case.py
 ```
 
-앱의 H&M 작업공간에서 **운영 시뮬레이션 자료 연결**을 한 번 누르면 검증 후 저장됩니다. 데이터를 이미 만든 상태에서 다시 만들려면 `import_hm.py`에 `--replace`를 붙입니다.
+스크립트는 실행 전에 원본 파일의 크기와 SHA-256을 [기록된 값](docs/DATA_SOURCES.md)과 비교합니다. 앱의 H&M 작업공간에서 **운영 시뮬레이션 자료 연결**을 한 번 누르면 검증 후 저장됩니다. 데이터를 이미 만든 상태에서 다시 만들려면 `import_hm.py`에 `--replace`를 붙입니다.
 
 ### 4. 자사 파일로 쓰기
 
@@ -106,6 +106,7 @@ H&M CSV가 없으면 H&M 시뮬레이션 테스트는 건너뜁니다.
 
 - [사례 연구](docs/PORTFOLIO_CASE_STUDY.md) — 문제, 데이터 설계, 8/31 판단, 9월 회고, 한계, 보완점, 역할 구분
 - [작업공간 데이터와 판단 기준](docs/WORKSPACE_DATA.md) — 계산식, 출처 구분, 추정 방법과 결과, 한계
+- [데이터 출처와 보관](docs/DATA_SOURCES.md) — 원본 파일 해시, 저장소에 두지 않는 파일, 보관 원칙
 - [H&M 운영 사례 데이터 QA](sample_data/hm_operating_case/DATA_QA.md) — 가상 운영 조건 생성 규칙과 전수 검증
 - [내부 자료 설계 참고](docs/FASHION_DATA_DESIGN.md) — 종료한 F/W 합성 사례의 재고 수불·시즌 기획 설계
 - `docs/BUILD_LOG.md`, `ARCHITECTURE.md`, `PRODUCT_SPEC.md`, `DECISION_RULES.md`, `CSV_IMPORT.md` — 초기 버전의 기록

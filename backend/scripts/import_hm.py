@@ -8,6 +8,7 @@ decides which products enter the sample.
 
 import argparse
 import csv
+import hashlib
 import io
 import sys
 import zipfile
@@ -28,6 +29,33 @@ SECTIONS = ("Womens Everyday Collection", "Womens Tailoring", "Womens Jackets")
 START, END = b"2019-01-01", b"2020-09-22"
 SELECTION_WINDOW = (b"-07-01", b"-08-31")  # month-day range ranked in each year; ends on the judgment date
 DATASET_NAME = "H&M 실제 판매 · MD 시연"
+# Files this sample was built from (docs/DATA_SOURCES.md). A different download may give a different sample.
+SOURCES = {
+    "articles.csv.zip": (107_081_191, "8a6007409cc7bd15716ae218b17ecf5bcb7d890e7dce39c1bf0129dd3a8f6fed"),
+    "transactions_train.csv.zip": (612_670_986, "5fcc90e80355e35aa04c04aa5c47587f4c6817eb3ba4ed3dc685b89a591559e3"),
+    "images.zip": (30_036_309_564, "2f70a9886bb2ca21da5e8abd4522d13c4deb8d303dcfd4f065cef0581168484b"),
+}
+
+
+def check_source(path: Path, name: str, full_hash: bool = True) -> bool:
+    """Compare a source file with the recorded size and SHA-256; warn instead of stopping on a mismatch."""
+    size, digest = SOURCES[name]
+    actual_size = path.stat().st_size
+    if actual_size != size:
+        print(f"경고: {path.name} 크기가 기록과 다릅니다 ({actual_size:,} ≠ {size:,}). 결과가 문서의 수치와 다를 수 있습니다.")
+        return False
+    if not full_hash:
+        print(f"{path.name}: 크기 일치 (해시는 --verify-images로 확인)")
+        return True
+    sha = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(8 << 20), b""):
+            sha.update(chunk)
+    if sha.hexdigest() != digest:
+        print(f"경고: {path.name} SHA-256이 기록과 다릅니다. 결과가 문서의 수치와 다를 수 있습니다.")
+        return False
+    print(f"{path.name}: 크기·SHA-256 일치")
+    return True
 IMAGE_DIR = Path(__file__).resolve().parents[2] / "frontend" / "public" / "hm_images"  # gitignored
 
 
@@ -156,9 +184,14 @@ if __name__ == "__main__":
     parser.add_argument("--max-per-year", type=int, default=50)
     parser.add_argument("--replace", action="store_true", help="기존 H&M 작업공간과 연결된 기록을 지우고 새로 만듭니다.")
     parser.add_argument("--images", type=Path, help="images.zip 경로. 선정 상품의 사진만 frontend/public/hm_images로 복사합니다.")
+    parser.add_argument("--verify-images", action="store_true", help="images.zip도 SHA-256까지 확인합니다 (30GB, 수 분 소요).")
     args = parser.parse_args()
     if not 1 <= args.max_per_year <= 200:
         parser.error("--max-per-year는 1~200 사이로 지정하세요.")
+    check_source(args.articles, "articles.csv.zip")
+    check_source(args.transactions, "transactions_train.csv.zip")
+    if args.images:
+        check_source(args.images, "images.zip", full_hash=args.verify_images)
     run(args.articles, args.transactions, args.max_per_year, args.replace)
     if args.images:
         link_images(args.images)
