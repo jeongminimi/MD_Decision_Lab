@@ -1,4 +1,4 @@
-import type { ActionOutcome, ActionRecord, ActionType, DashboardSummary, FashionCase, FashionComparison, FashionDecision, FashionDecisionCreatePayload, FashionOptionInput, OlistComparison, OlistScenarioDetail, OlistScenarioSummary, OlistStatus, OlistTopProduct, ProductAnalysis } from "./types";
+import type { ActionOutcome, ActionRecord, ActionType, DashboardSummary, FashionCase, FashionComparison, FashionDecision, FashionDecisionCreatePayload, FashionOptionInput, FashionPlanDecision, FashionPlanning, OlistComparison, OlistScenarioDetail, OlistScenarioSummary, OlistStatus, OlistTopProduct, ProductAnalysis } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
@@ -26,6 +26,12 @@ export const api = {
   },
   fashionUpdateProduct: (sku: string, values: { stock_on_hand: number; inbound_units: number; unit_price: number; unit_cost: number }) => request<ProductAnalysis>(`/api/fashion/products/${encodeURIComponent(sku)}/inputs`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) }),
   fashionImportSales: (file: File) => { const body = new FormData(); body.append("file", file); return request<{ updated: number; as_of_date: string }>("/api/fashion/sales/import", { method: "POST", body }); },
+  fashionPlanningStatus: () => request<{ ready: boolean; flow_rows: number; reference_rows: number; source: string }>("/api/fashion/planning/status"),
+  fashionPlanningImport: () => request<{ ready: boolean; flow_rows: number; reference_rows: number }>("/api/fashion/planning/import-sample", { method: "POST" }),
+  fashionPlanningAnalysis: (growthPct: number, targetPct: number) => request<FashionPlanning>(`/api/fashion/planning/analysis?growth_pct=${growthPct}&target_sell_through_pct=${targetPct}`),
+  fashionPlanDecisions: () => request<FashionPlanDecision[]>("/api/fashion/planning/decisions"),
+  fashionSavePlanDecision: (payload: { sku: string; growth_pct: number; target_sell_through_pct: number; rationale: string }) =>
+    request<{ id: number; sku: string; saved: boolean; note: string }>("/api/fashion/planning/decisions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
   dashboard: () => request<DashboardSummary>("/api/dashboard"),
   products: (q = "", risk = "all") => request<ProductAnalysis[]>(`/api/products?q=${encodeURIComponent(q)}&risk=${risk}`),
   actions: () => request<ActionRecord[]>("/api/actions"),

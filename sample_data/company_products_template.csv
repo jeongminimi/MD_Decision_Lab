@@ -1,0 +1,3 @@
+sku,name,category,section,stock_on_hand,inbound_units,lead_time_days,unit_price_krw,unit_cost_krw,reorderable,lifecycle
+COAT-001,울 블렌드 코트,코트,여성 아우터,42,10,14,129000,62000,true,regular
+TOP-002,여름 린넨 셔츠,셔츠,여성 상의,85,0,21,49000,22000,false,summer_clearance

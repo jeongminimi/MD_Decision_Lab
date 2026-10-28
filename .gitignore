@@ -16,7 +16,11 @@ node_modules/
 frontend/node_modules/
 frontend/.npm-cache/
 frontend/dist/
+frontend/public/hm_images/
 dist/
+
+# H&M Kaggle-derived data: regenerate locally with sample_data/hm_operating_case/generate_hm_operating_case.py
+sample_data/hm_operating_case/*.csv
 frontend/tsconfig.tsbuildinfo
 .vite/
 
@@ -29,3 +33,4 @@ frontend/tsconfig.tsbuildinfo
 Thumbs.db
 .vscode/
 .idea/
+settings.json

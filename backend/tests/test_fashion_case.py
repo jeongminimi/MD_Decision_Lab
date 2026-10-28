@@ -28,14 +28,15 @@ class FashionCaseTests(unittest.TestCase):
         self.assertTrue(status(self.db)["imported"])
         self.assertEqual(self.db.scalar(select(func.count(DailySale.id))), 1800)
         items = {item["sku"]: item for item in analysis(CASE_DATE, self.db)["products"]}
-        self.assertEqual(items["FSH-SS-001"]["risk"], "overstock_risk")
+        self.assertEqual(items["FSH-SS-001"]["risk"], "data_insufficient")
+        self.assertIn("최근 수요 변화", items["FSH-SS-001"]["recommendation"])
         self.assertEqual(items["FSH-SS-001"]["gross_margin_rate_30d_pct"], 63.3)
         self.assertEqual(items["FSH-SS-001"]["unit_markup_pct"], 172.2)
         self.assertEqual(items["FSH-FW-001"]["recommendation"], "출시 준비 상태 확인")
         self.assertEqual(items["FSH-EV-001"]["risk"], "stockout_risk")
         self.assertIsNone(items["FSH-EV-001"]["suggested_replenishment_units"])
         self.assertIn("재발주가 불가능", items["FSH-EV-001"]["recommendation_reason"])
-        self.assertEqual(items["FSH-EV-001"]["units_7d"], 32)
+        self.assertEqual(items["FSH-EV-001"]["units_7d"], 37)
 
     def test_repeat_import_preserves_existing_products(self):
         import_sample(self.db)
@@ -95,7 +96,7 @@ class FashionCaseTests(unittest.TestCase):
         import_sample(self.db)
         saved = create_decision(DecisionInput(sku="FSH-EV-001", action_type="sellout_monitor",
             rationale="재발주가 불가능하여 소진 수량을 확인한다."), self.db)
-        self.assertEqual(saved["observed_units_7d"], 32)
+        self.assertEqual(saved["observed_units_7d"], 37)
         self.assertEqual(saved["assumed_stock_on_hand"], 22)
         self.assertEqual(list_decisions(self.db)[0]["id"], saved["id"])
 

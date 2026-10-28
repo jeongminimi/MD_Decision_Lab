@@ -110,6 +110,7 @@ export default function FashionOptionCompare({ item, decisions, onDecisionSaved 
   const [a, b] = result?.options ?? [];
   const difference = a?.estimated_gross_profit != null && b?.estimated_gross_profit != null
     ? b.estimated_gross_profit - a.estimated_gross_profit : null;
+  const profitScale = Math.max(1, Math.abs(a?.estimated_gross_profit ?? 0), Math.abs(b?.estimated_gross_profit ?? 0));
 
   const productDecisions = decisions.filter((d) => d.sku === item.sku);
 
@@ -122,12 +123,7 @@ export default function FashionOptionCompare({ item, decisions, onDecisionSaved 
         </div>
       </div>
 
-      <p className="fashion-compare-intro">
-        <b>A안은 자동 설정:</b> 현재 가격으로 최근 30일과 같은 {number(item.units_30d)}개를 다시 판매한다고 가정합니다.
-        <small className="fashion-compare-note"> (과거에 실제로 관측된 매출총이익과 다른 시뮬레이션 가정입니다)</small>
-        <br />
-        <b>B안:</b> {isUpcoming ? "판매 이력이 없는 신상품입니다. 예상 판매량을 직접 가정하고 준비된 재고와 비교해 보세요." : "할인율과 예상 30일 판매량을 입력하여 두 안의 매출총이익을 비교해 보세요."}
-      </p>
+      <p className="fashion-compare-intro">A안: 현재가·최근 30일 판매량 {number(item.units_30d)}개 유지 · B안: 할인율과 판매량 입력. 모두 시나리오 가정입니다.</p>
 
       <div className="fashion-compare-simple-inputs">
         <label>
@@ -188,6 +184,18 @@ export default function FashionOptionCompare({ item, decisions, onDecisionSaved 
 
       {result && (
         <div className="fashion-compare-summary" aria-live="polite">
+          <div className="fashion-compare-visual">
+            <h4>예상 매출총이익 비교</h4>
+            <p>두 막대는 같은 눈금입니다. 할인과 판매량은 입력한 가정이며 실제 성과가 아닙니다.</p>
+            {[a, b].map((option, index) => <div className="fashion-compare-visual-row" key={option.label}>
+              <span>{index === 0 ? "A · 유지" : "B · 변경"}</span>
+              <div className="fashion-compare-visual-track" role="img" aria-label={`${option.label} 예상 매출총이익 ${option.feasible && option.estimated_gross_profit != null ? won(option.estimated_gross_profit) : '재고 부족으로 계산 제외'}`}>
+                {option.feasible && option.estimated_gross_profit != null && <span className={option.estimated_gross_profit < 0 ? "loss" : "gain"} style={{ width: `${Math.abs(option.estimated_gross_profit) / profitScale * 100}%` }} />}
+              </div>
+              <b>{option.feasible && option.estimated_gross_profit != null ? won(option.estimated_gross_profit) : "계산 제외"}</b>
+            </div>)}
+            {((a.estimated_gross_profit ?? 0) < 0 || (b.estimated_gross_profit ?? 0) < 0) && <small>붉은 막대는 매출총손실을 뜻하며 길이는 손익의 절댓값입니다.</small>}
+          </div>
           <div className="fashion-compare-row fashion-compare-row-head">
             <span>비교 항목</span>
             <b>A · 현재 가격 유지</b>
@@ -255,7 +263,7 @@ export default function FashionOptionCompare({ item, decisions, onDecisionSaved 
             <div className="fashion-decision-box-header">
               <span className="section-kicker">MD RECORD</span>
               <h4 id="decision-box-title">내 판단 남기기</h4>
-              <p>비교 결과를 바탕으로 A안, B안 또는 보류를 선택하고 판단 이유를 기록합니다. 선택 당시의 수치 스냅샷이 함께 보존됩니다.</p>
+              <p>선택한 안과 판단 이유를 저장합니다.</p>
             </div>
 
             <div className="fashion-option-picker" role="radiogroup" aria-label="선택할 조치안">

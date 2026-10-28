@@ -81,10 +81,13 @@
 .fashion-data-edit { margin: 1.2rem 0; }
 .fashion-data-edit > summary { cursor: pointer; color: #355e4d; font-weight: 600; }
 
+.fashion-compare-visual{margin:0 0 16px;padding:17px;border:1px solid #dce8df;border-radius:14px;background:#f7faf7}.fashion-compare-visual h4{margin:0 0 4px;font-size:15px;color:#314b3a}.fashion-compare-visual p{margin:0 0 14px;font-size:12px;line-height:1.5;color:#637367}.fashion-compare-visual-row{display:grid;grid-template-columns:78px minmax(80px,1fr) 115px;align-items:center;gap:11px;margin:10px 0;font-size:12px}.fashion-compare-visual-row>b{text-align:right;font-size:13px;font-variant-numeric:tabular-nums}.fashion-compare-visual-track{height:17px;background:#e5eee7;border-radius:5px;overflow:hidden}.fashion-compare-visual-track span{display:block;height:100%;border-radius:5px}.fashion-compare-visual-track .gain{background:#5d9273}.fashion-compare-visual-track .loss{background:#c4716b}.fashion-compare-visual>small{display:block;margin-top:9px;font-size:11px;color:#975b57}
+
 @media (max-width: 640px) {
   .fashion-compare { padding: 1rem; border-radius: 18px; }
   .fashion-compare-simple-inputs { display: grid; }
   .fashion-compare-row { grid-template-columns: minmax(85px, 1.15fr) repeat(2, minmax(75px, 1fr)); gap: .3rem; font-size: .85rem; }
   .fashion-option-picker { grid-template-columns: 1fr; }
   .fashion-save-btn { max-width: 100%; }
+  .fashion-compare-visual-row{grid-template-columns:62px minmax(60px,1fr) 85px;gap:7px}.fashion-compare-visual-row>b{font-size:11px}
 }

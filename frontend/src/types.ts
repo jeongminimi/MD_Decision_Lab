@@ -56,6 +56,37 @@ export interface FashionCase {
   summary_by_season: Record<string, { stock_cost_value: number; revenue_30d: number; gross_margin_30d: number; gross_margin_rate_30d_pct: number | null; margin_is_estimated: boolean; attention_count: number }>;
 }
 
+export interface FashionPlanning {
+  source: string;
+  as_of_date: string;
+  growth_pct: number;
+  target_sell_through_pct: number;
+  warning: string;
+  flow_summary: Array<{
+    sku: string; name: string; season_group: string; opening_stock: number; receipts: number;
+    customer_returns: number; removed_units: number; sold_units: number; closing_stock: number;
+    sell_through_pct: number | null; reconciled_with_current_inputs: boolean; note: string;
+  }>;
+  plans: Array<{
+    sku: string; name: string; reference_name: string; prior_available_units: number;
+    prior_sold_units: number; prior_end_stock: number; prior_revenue: number;
+    prior_gross_profit: number; prior_sell_through_pct: number; current_stock: number;
+    inbound_units: number; current_supply: number; assumed_demand: number;
+    target_supply: number; additional_order_to_review: number; planned_supply: number;
+    excess_units_to_review: number; inbound_reduction_to_review: number; recommended_action: string;
+    projected_sales: number; projected_end_stock: number; projected_revenue: number;
+    projected_gross_profit: number; note: string;
+  }>;
+}
+
+export interface FashionPlanDecision {
+  id: number; sku: string; name: string; growth_pct: number;
+  target_sell_through_pct: number; prior_sold_units: number;
+  current_supply: number; assumed_demand: number; target_supply: number;
+  additional_order_to_review: number; excess_units_to_review: number;
+  rationale: string; created_at: string;
+}
+
 export interface FashionDecision {
   id: number;
   sku: string;

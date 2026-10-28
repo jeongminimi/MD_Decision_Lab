@@ -87,8 +87,8 @@ def import_sample(db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=409, detail="FSH 상품이 이미 있습니다. 기존 자료를 덮어쓰지 않았습니다.")
     try:
-        products = _read("fashion_products_20260831.csv")
-        sales = _read("fashion_daily_sales_20260831.csv")
+        products = _read("fashion_products_realistic_v2.csv")
+        sales = _read("fashion_daily_sales_realistic_v2.csv")
         contexts = _read("fashion_merchandising_context.csv")
         product_skus = {row["sku"] for row in products}
         if len(products) != 30 or len(product_skus) != 30 or len(sales) != 1800 or len(contexts) != 30:
@@ -96,7 +96,7 @@ def import_sample(db: Session = Depends(get_db)):
         if {row["sku"] for row in contexts} != product_skus or {row["sku"] for row in sales} != product_skus:
             raise ValueError("판매·기획 정보의 SKU가 상품 목록과 다릅니다.")
         product_ids = {}
-        product_prices = {row["sku"]: (float(row["unit_price"]), float(row["unit_cost"])) for row in products}
+        product_costs = {row["sku"]: float(row["unit_cost"]) for row in products}
         for row in products:
             values = {key: int(row[key]) for key in ("stock_on_hand", "inbound_units", "lead_time_days", "target_cover_days")}
             values.update({key: float(row[key]) for key in ("unit_price", "unit_cost")})
@@ -124,8 +124,8 @@ def import_sample(db: Session = Depends(get_db)):
                 raise ValueError(f"중복 또는 범위를 벗어난 판매일: {key}")
             seen.add(key)
             units, revenue, margin = int(row["units_sold"]), float(row["revenue"]), float(row["gross_margin"])
-            price, cost = product_prices[row["sku"]]
-            if units < 0 or revenue < 0 or abs(revenue - units * price) > 0.01 or abs(margin - (revenue - units * cost)) > 0.01:
+            cost = product_costs[row["sku"]]
+            if units < 0 or revenue < 0 or (units == 0 and revenue != 0) or abs(margin - (revenue - units * cost)) > 0.01:
                 raise ValueError(f"판매·매출·이익 값이 맞지 않습니다: {key}")
             db.add(DailySale(product_id=product_ids[row["sku"]], sale_date=sale_date,
                              units_sold=units, revenue=revenue, gross_margin=margin))
