@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, Database, Info, TriangleAlert } from "lucide-react";
 import type { WorkView } from "./App";
-import { simApi, type SimAnalysis, type SimComparison, type SimDecision, type SimForecast, type SimProduct, type SimProductDetail, type SimScenario } from "./workApi";
+import { simApi, type SimAnalysis, type SimDecision, type SimForecast, type SimProduct, type SimProductDetail, type SimScenario } from "./workApi";
+import StrategyPlanner from "./StrategyPlanner";
 import "./hm-sim.css";
 
 const n = (value: number) => new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 1 }).format(value);
@@ -76,9 +77,9 @@ export default function HmSimulation({ datasetId, view, onNavigate }: { datasetI
         <small><Source kind="sales"/> 기준일 {item.as_of_date} · 최근 14일 {n(item.snapshot.observed.units_14d)}개 · 30일 {n(item.snapshot.observed.units_30d)}개</small>
         <small><Source kind="conditions"/> 재고 {n(item.snapshot.conditions.stock_on_hand)}개 · 30일 내 계획 입고 {n(item.snapshot.conditions.planned_inbound_30d)}개 · 판매가 {won(item.snapshot.conditions.selling_price_krw)} · 원가 {won(item.snapshot.conditions.unit_cost_krw)}</small>
         <small><Source kind="results"/> {riskLabels[item.snapshot.signal.risk]} · 할인 {item.snapshot.comparison.discount_pct}% · 가정 판매 {n(item.snapshot.comparison.expected_units_30d)}개 · 추가 매입 {n(item.snapshot.comparison.purchase_units)}개 · 매출총이익 {item.snapshot.comparison.estimated_gross_profit_krw == null ? "계산 불가" : won(item.snapshot.comparison.estimated_gross_profit_krw)}</small>
-        {item.snapshot.alternatives && <small>A {item.snapshot.alternatives.A.estimated_gross_profit_krw == null ? "재고 부족" : won(item.snapshot.alternatives.A.estimated_gross_profit_krw)} · B {item.snapshot.alternatives.B.estimated_gross_profit_krw == null ? "재고 부족" : won(item.snapshot.alternatives.B.estimated_gross_profit_krw)} · 선택 {item.snapshot.alternatives.selected_option}</small>}
+        {item.snapshot.alternatives && <small>현재 운영 {item.snapshot.alternatives.A.estimated_gross_profit_krw == null ? "재고 부족" : won(item.snapshot.alternatives.A.estimated_gross_profit_krw)} · 제안 전략 {item.snapshot.alternatives.B.estimated_gross_profit_krw == null ? "재고 부족" : won(item.snapshot.alternatives.B.estimated_gross_profit_krw)} · 선택 {item.snapshot.alternatives.selected_option === "A" ? "현재 운영" : "제안 전략"}</small>}
         {(() => { const after = analysis.products.find((product) => product.sku === item.sku)?.post_as_of; return after && <small className="sim-after"><b>회고</b> 이후 관측 {after.start}~{after.end} <Source kind="sales"/> 판매 {n(after.observed_units)}개 · <Source kind="results"/> 가상 정책상 공급 부족 {n(after.policy_shortfall_units)}개{after.first_shortfall_date ? ` (첫 부족 ${after.first_shortfall_date})` : ""} · 저장 당시에는 알 수 없던 값이며 판단의 성과가 아닙니다</small>; })()}
-      </article>)}</div> : <p className="work-empty">저장한 판단이 없습니다. 상품을 열어 두 안을 비교한 뒤 이유를 남겨 보세요.</p>}
+      </article>)}</div> : <p className="work-empty">저장한 판단이 없습니다. 상품을 열어 판매 전략을 계산한 뒤 이유를 남겨 보세요.</p>}
     </section>}
 
     {view === "planning" && <><ForecastCheck scenarioId={scenario.id} onOpen={openProduct}/><Retrospective analysis={analysis}/><PostSummary analysis={analysis} onOpen={openProduct}/></>}
@@ -146,42 +147,12 @@ function LedgerChart({ detail }: { detail: SimProductDetail }) {
 
 function SimProductPanel({ scenario, sku, onSaved }: { scenario: SimScenario; sku: string; onSaved: () => Promise<void> }) {
   const [detail, setDetail] = useState<SimProductDetail | null>(null);
-  const [discount, setDiscount] = useState(15);
-  const [baselineExpected, setBaselineExpected] = useState(0);
-  const [expected, setExpected] = useState(0);
-  const [purchase, setPurchase] = useState(0);
-  const [selectedOption, setSelectedOption] = useState<"A" | "B">("B");
-  const [comparison, setComparison] = useState<[SimComparison, SimComparison] | null>(null);
-  const [action, setAction] = useState("할인 검토");
-  const [rationale, setRationale] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  useEffect(() => { void simApi.product(scenario.id, sku).then((value) => { setDetail(value); setBaselineExpected(value.observed.units_30d); setExpected(value.observed.units_30d); }).catch((err) => setMessage(err instanceof Error ? err.message : "상품을 불러오지 못했습니다.")); }, [scenario.id, sku]);
+  useEffect(() => { void simApi.product(scenario.id, sku).then(setDetail).catch((err) => setMessage(err instanceof Error ? err.message : "상품을 불러오지 못했습니다.")); }, [scenario.id, sku]);
   if (!detail) return <p className="work-empty">{message || "상품을 불러오는 중…"}</p>;
   const item: SimProduct = detail;
 
-  async function compare() {
-    setBusy(true); setMessage("");
-    try {
-      const common = { scenario_id: scenario.id, sku };
-      const results = await Promise.all([
-        simApi.compare({ ...common, discount_pct: 0, expected_units_30d: baselineExpected, purchase_units: 0 }),
-        simApi.compare({ ...common, discount_pct: discount, expected_units_30d: expected, purchase_units: purchase }),
-      ]);
-      setComparison(results as [SimComparison, SimComparison]);
-    } catch (err) { setMessage(err instanceof Error ? err.message : "비교를 계산하지 못했습니다."); }
-    finally { setBusy(false); }
-  }
-  async function save() {
-    setBusy(true); setMessage("");
-    try {
-      await simApi.saveDecision({ scenario_id: scenario.id, sku, discount_pct: discount, expected_units_30d: expected,
-        purchase_units: purchase, baseline_expected_units_30d: baselineExpected, selected_option: selectedOption, action, rationale });
-      await onSaved(); setRationale(""); setMessage(`${selectedOption}안과 판단 이유를 저장했습니다.`);
-    } catch (err) { setMessage(err instanceof Error ? err.message : "판단을 저장하지 못했습니다."); }
-    finally { setBusy(false); }
-  }
-  const maxProfit = Math.max(1, ...(comparison || []).map((value) => Math.max(0, value.estimated_gross_profit_krw || 0)));
   const c = item.conditions;
 
   return <section className="panel work-panel work-detail" id="sim-product-detail">
@@ -191,6 +162,17 @@ function SimProductPanel({ scenario, sku, onSaved }: { scenario: SimScenario; sk
       <div><h3>기준일 조건 <Source kind="conditions"/></h3><dl><dt>기준일 재고</dt><dd>{n(c.stock_on_hand)}개</dd><dt>기준일 이후 계획 입고</dt><dd>{n(c.planned_inbound_after_as_of)}개 (30일 내 {n(c.planned_inbound_30d)}개)</dd><dt>리드타임</dt><dd>{c.lead_time_days}일</dd><dt>재발주</dt><dd>{c.reorderable ? "가능" : `불가 (설정일 ${c.reorder_stop_date})`}</dd><dt>정가 / 판매가 / 원가</dt><dd>{won(c.list_price_krw)} / {won(c.selling_price_krw)} / {won(c.unit_cost_krw)}</dd></dl></div>
       <div><h3>판단 <Source kind="results"/></h3><dl><dt>소진 예상일</dt><dd>{item.signal.days_of_cover == null ? "판매 속도 없음 · 계산 안 함" : `약 ${n(item.signal.days_of_cover)}일`}</dd><dt>근거</dt><dd>{item.signal.reason}</dd><dt>다음 검토</dt><dd>{item.signal.action}</dd><dt>{item.sell_through.label}</dt><dd>{item.sell_through.pct == null ? item.sell_through.reason : `${n(item.sell_through.pct)}%`}<small>{item.sell_through.start} ~ {item.sell_through.end} · 공급 {n(item.sell_through.sold_units ?? 0)} ÷ (기초 {n(item.sell_through.opening_stock ?? 0)} + 입고 {n(item.sell_through.received_units ?? 0)})</small></dd><dt>기준일 30일 시뮬레이션 매출총이익</dt><dd>{won(item.signal.simulated_gross_profit_30d_krw)}</dd></dl></div>
     </div>
+    <StrategyPlanner
+      key={sku}
+      observedUnits={item.observed.units_30d}
+      ready={true}
+      canReorder={c.reorderable}
+      compareOption={(option) => simApi.compare({ scenario_id: scenario.id, sku, ...option })}
+      saveDecision={async (decision) => {
+        await simApi.saveDecision({ scenario_id: scenario.id, sku, ...decision });
+        await onSaved();
+      }}
+    />
     <details className="sim-reasons"><summary>선정 이유와 가정</summary><p>{detail.policy.selection_reason}</p><p>{detail.policy.assumption_reason}</p>{detail.prices.map((price) => <p key={price.valid_from}>{price.valid_from}~{price.valid_to}: 판매가 {won(price.selling_price_krw)} · {price.price_tier_rule} · 원가 {price.cost_rule}</p>)}</details>
 
     <h3>일별 수불 <Source kind="conditions"/></h3>
@@ -202,13 +184,6 @@ function SimProductPanel({ scenario, sku, onSaved }: { scenario: SimScenario; sk
       <div className="sim-post-box"><h3>이후 관측 ({item.post_as_of.start} ~ {item.post_as_of.end})</h3><dl><dt>이후 관측 판매 <Source kind="sales"/></dt><dd>{n(item.post_as_of.observed_units)}개</dd><dt>가상 재고로 공급 가능 <Source kind="results"/></dt><dd>{n(item.post_as_of.supplied_units)}개</dd><dt>가상 정책상 공급 부족분 <Source kind="results"/></dt><dd>{n(item.post_as_of.policy_shortfall_units)}개{item.post_as_of.first_shortfall_date ? ` · 첫 부족 ${item.post_as_of.first_shortfall_date}` : ""}</dd><dt>{item.post_as_of.end} 가상 기말재고</dt><dd>{n(item.post_as_of.closing_stock)}개</dd></dl><small>{scenario.shortfall_note}</small></div>
     </div>
 
-    <div className="work-compare"><div className="work-panel-heading"><div><h3>A/B 가정 비교</h3><small>30일 매출총이익 · 잔여 재고</small></div><Source kind="results"/></div>
-      <div className="work-ab-inputs"><div><b>A · 현재가 유지</b><label>예상 30일 판매 (개)<input type="number" min="0" value={baselineExpected} onChange={(event) => { setBaselineExpected(Number(event.target.value)); setComparison(null); }}/></label></div><div><b>B · 변경안</b><div className="work-form-grid work-compare-fields"><label>할인율 (%)<input type="number" min="0" max="70" value={discount} onChange={(event) => { setDiscount(Number(event.target.value)); setComparison(null); }}/></label><label>예상 30일 판매 (개)<input type="number" min="0" value={expected} onChange={(event) => { setExpected(Number(event.target.value)); setComparison(null); }}/></label><label>추가 매입 (개)<input type="number" min="0" value={purchase} disabled={!c.reorderable} onChange={(event) => { setPurchase(Number(event.target.value)); setComparison(null); }}/>{!c.reorderable && <small>재발주 불가</small>}</label></div></div></div>
-      <button type="button" className="button button-primary" disabled={busy || discount < 0 || discount > 70 || expected < 0 || baselineExpected < 0 || purchase < 0} onClick={() => void compare()}>두 안 계산</button>
-      {comparison && <><div className="work-comparison-result">{comparison.map((result, index) => <div key={index}><label className="work-ab-choice"><input type="radio" name={`sim-choice-${sku}`} checked={selectedOption === (index === 0 ? "A" : "B")} onChange={() => { const choice = index === 0 ? "A" : "B"; setSelectedOption(choice); setAction(choice === "A" ? "현재 유지" : "할인 검토"); }}/><b>{index === 0 ? "A · 현재가" : "B · 변경안"}</b></label><strong>{result.feasible && result.estimated_gross_profit_krw != null ? won(result.estimated_gross_profit_krw) : "재고 부족"}</strong><div className="work-profit-bar"><span style={{ width: `${result.feasible ? Math.max(0, (result.estimated_gross_profit_krw || 0) / maxProfit * 100) : 0}%` }}/></div><small>예상 판매 {n(result.expected_units_30d)}개 · 잔여 {result.estimated_remaining_units == null ? "—" : `${n(result.estimated_remaining_units)}개`}</small>{result.first_gap_date && <small className="work-gap">{result.first_gap_date}부터 재고 공백 · 최대 {n(result.max_gap_units)}개</small>}</div>)}</div>
-        <p className="work-ab-delta">B − A 매출총이익: {comparison.every((row) => row.estimated_gross_profit_krw != null) ? won(comparison[1].estimated_gross_profit_krw! - comparison[0].estimated_gross_profit_krw!) : "재고 공백으로 비교 불가"} <abbr title="입력한 판매량을 가정한 계산입니다. 할인 효과나 무작위 배정 A/B 테스트 결과가 아닙니다.">ⓘ</abbr></p>
-        <div className="work-decision-form"><label>검토할 조치<select value={action} onChange={(event) => setAction(event.target.value)}>{["할인 검토", "추가 매입 검토", "프로모션 검토", "라이브 노출 검토", "현재 유지"].map((value) => <option key={value}>{value}</option>)}</select></label><label>판단 이유<textarea rows={2} value={rationale} onChange={(event) => setRationale(event.target.value)} placeholder="예: 예상 판매량을 비교해 이익과 재고 공백을 확인했다."/></label><button type="button" className="button button-secondary" disabled={busy || !comparison[selectedOption === "A" ? 0 : 1].feasible || rationale.trim().length < 5} onClick={() => void save()}>{selectedOption}안 판단 저장</button></div></>}
-    </div>
     {message && <p className="work-inline-message">{message}</p>}
   </section>;
 }

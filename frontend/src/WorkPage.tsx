@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Check, Database, FileUp, Info, RefreshCw, TriangleAlert } from "lucide-react";
 import type { WorkView } from "./App";
-import { workApi, type WorkAnalysis, type WorkComparison, type WorkDataset, type WorkDecision, type WorkInputs, type WorkProduct } from "./workApi";
+import { workApi, type WorkAnalysis, type WorkDataset, type WorkDecision, type WorkInputs, type WorkProduct } from "./workApi";
 import HmSimulation from "./HmSimulation";
+import StrategyPlanner from "./StrategyPlanner";
 import "./work.css";
 
 const n = (value: number) => new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 1 }).format(value);
@@ -110,7 +111,7 @@ export default function WorkPage({ view, onNavigate }: { view: WorkView; onNavig
       </section>
       {focus && datasetId != null && <ProductDetail key={`${datasetId}-${focus.sku}-${asOf}`} item={focus} dataset={dataset!} asOf={asOf} onChanged={() => refresh()}/>}
     </>}
-    {view === "actions" && dataset && <>{dataset.kind === "company" && <SalesUpdatePanel datasetId={dataset.id} onUploaded={async (date) => { setDatasets(await workApi.datasets()); setAsOf(date); }}/>}<section className="panel work-panel"><div className="work-panel-heading"><div><h2>내 결정 기록</h2><small>저장한 검토와 실제 실행을 구분합니다.</small></div></div>{decisions.length ? <div className="work-decision-list">{decisions.map((item) => <DecisionRow key={item.id} item={item} dataset={dataset} onChanged={() => refresh()}/>)}</div> : <p className="work-empty">저장한 판단이 없습니다. 상품에서 조치안을 비교하고 이유를 남겨보세요.</p>}</section></>}
+    {view === "actions" && dataset && <>{dataset.kind === "company" && <SalesUpdatePanel datasetId={dataset.id} onUploaded={async (date) => { setDatasets(await workApi.datasets()); setAsOf(date); }}/>}<section className="panel work-panel"><div className="work-panel-heading"><div><h2>내 결정 기록</h2><small>저장한 검토와 실제 실행을 구분합니다.</small></div></div>{decisions.length ? <div className="work-decision-list">{decisions.map((item) => <DecisionRow key={item.id} item={item} dataset={dataset} onChanged={() => refresh()}/>)}</div> : <p className="work-empty">저장한 판단이 없습니다. 상품에서 판매 전략을 계산하고 이유를 남겨보세요.</p>}</section></>}
     {view === "planning" && analysis && <PlanningPanel products={analysis.products} dataset={dataset!} onOpen={openProduct}/>}
     </>}
     {!dataset && <section className="panel work-panel"><h2>작업공간 연결</h2><p>자사 상품·판매 파일을 올리거나 H&M 시연 데이터가 연결되면 분석을 시작할 수 있습니다.</p><UploadPanel onUploaded={async (id) => { const items = await workApi.datasets(); setDatasets(items); changeDatasetFromUpload(id, items); }} busy={busy} setBusy={setBusy} setError={setError} setNotice={setNotice}/></section>}
@@ -144,14 +145,6 @@ function ProductDetail({ item, dataset, asOf, onChanged }: { item: WorkProduct; 
     lead_time_days: item.lead_time_days, unit_price_krw: item.unit_price_krw,
     unit_cost_krw: item.unit_cost_krw, reorderable: item.reorderable, lifecycle: item.lifecycle,
   });
-  const [discount, setDiscount] = useState(15);
-  const [baselineExpected, setBaselineExpected] = useState(item.units_30d);
-  const [expected, setExpected] = useState(item.units_30d);
-  const [purchase, setPurchase] = useState(0);
-  const [selectedOption, setSelectedOption] = useState<"A" | "B">("B");
-  const [action, setAction] = useState("할인 검토");
-  const [rationale, setRationale] = useState("");
-  const [comparison, setComparison] = useState<[WorkComparison, WorkComparison] | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   function updateNumber(key: keyof WorkInputs, text: string) {
@@ -159,35 +152,11 @@ function ProductDetail({ item, dataset, asOf, onChanged }: { item: WorkProduct; 
   }
   async function saveInputs() {
     setBusy(true); setMessage("");
-    try { await workApi.updateInputs(dataset.id, item.sku, fields); await onChanged(); setComparison(null); setMessage("입력값을 저장했습니다. 재고·이익 판단을 다시 계산했습니다."); }
+    try { await workApi.updateInputs(dataset.id, item.sku, fields); await onChanged(); setMessage("입력값을 저장했습니다. 재고·이익 판단을 다시 계산했습니다."); }
     catch (err) { setMessage(err instanceof Error ? err.message : "입력값을 저장하지 못했습니다."); }
     finally { setBusy(false); }
   }
-  async function compare() {
-    setBusy(true); setMessage("");
-    try {
-      const common = { dataset_id: dataset.id, sku: item.sku, as_of_date: asOf };
-      const results = await Promise.all([
-        workApi.compare({ ...common, discount_pct: 0, expected_units_30d: baselineExpected, purchase_units: 0 }),
-        workApi.compare({ ...common, discount_pct: discount, expected_units_30d: expected, purchase_units: purchase }),
-      ]);
-      setComparison(results as [WorkComparison, WorkComparison]);
-    } catch (err) { setMessage(err instanceof Error ? err.message : "비교를 계산하지 못했습니다."); }
-    finally { setBusy(false); }
-  }
-  async function saveDecision() {
-    if (!comparison || rationale.trim().length < 5) return;
-    setBusy(true); setMessage("");
-    try {
-      await workApi.saveDecision({ dataset_id: dataset.id, sku: item.sku, as_of_date: asOf,
-        discount_pct: discount, expected_units_30d: expected, purchase_units: purchase,
-        baseline_expected_units_30d: baselineExpected, selected_option: selectedOption, action, rationale });
-      await onChanged(); setMessage(`${selectedOption}안과 판단 이유를 저장했습니다.`);
-    } catch (err) { setMessage(err instanceof Error ? err.message : "판단을 저장하지 못했습니다."); }
-    finally { setBusy(false); }
-  }
   const comparisonReady = item.stock_on_hand != null && item.inbound_units != null && item.unit_price_krw != null && item.unit_cost_krw != null;
-  const maxProfit = Math.max(1, ...(comparison || []).map((value) => Math.max(0, value.estimated_gross_profit_krw || 0)));
   return <section className="panel work-panel work-detail" id="work-product-detail"><div className="work-panel-heading"><div><span className="section-kicker">PRODUCT REVIEW · {item.sku}</span><h2>{item.name}</h2><small>{item.section} · {item.category}</small></div><span className="work-detail-identity">{item.image_ref && <img className="work-product-image large" src={item.image_ref} alt={`${item.name} 상품 사진`} loading="lazy"/>}<span className={`work-risk ${item.risk}`}>{riskLabels[item.risk] || item.risk}</span></span></div>
     <div className="work-observation"><span className="work-provenance observed">{dataset.kind === "hm" ? "H&M 실제 판매 기록" : dataset.kind === "synthetic" ? "가상 판매 기록" : "자사 판매 기록"}</span><b>{item.reason}</b><small>최근 7일 {n(item.units_7d)}개 · 30일 {n(item.units_30d)}개 · 전기 30일 {n(item.prior_30d)}개</small><small>채널별 30일: {Object.entries(item.channel_units_30d).map(([channel, units]) => `${channel} ${n(units)}개`).join(" · ") || "기록 없음"}{dataset.kind === "hm" ? " · 채널 번호의 온·오프라인 의미는 확인 전" : ""}</small><strong>다음 검토: {item.action}</strong></div>
     <div className="work-metrics"><div><small><abbr title="최근 14일 판매 수량을 14로 나눈 값으로 재고를 나눕니다. 판매 기간이 짧으면 관측된 일수로 나눕니다.">재고 소진 예상일</abbr></small><b>{item.days_of_cover == null ? "재고 입력 후 계산" : `약 ${n(item.days_of_cover)}일`}</b></div><div><small><abbr title="매출에서 상품 매입원가만 뺀 값입니다. 배송비·광고비 등은 제외합니다.">30일 매출총이익</abbr></small><b>{item.observed_gross_profit_30d == null ? "원본 이익 자료 없음" : won(item.observed_gross_profit_30d)}</b></div><div><small>전년 같은 기간 · 동일 SKU</small><b>{item.year_ago_30d == null ? "비교 기간 없음" : `${n(item.year_ago_30d)}개`}</b></div><div><small><abbr title="판매율 = 기간 판매 수량 ÷ (기초재고 + 기간 입고). 기초재고 + 입고 − 판매가 기준일 재고와 맞을 때만 계산합니다.">판매율</abbr>{item.sell_through.start ? ` · ${item.sell_through.start}~${item.sell_through.end}` : ""}</small><b>{item.sell_through.pct == null ? (item.sell_through.status === "mismatch" ? "수불 불일치" : "계산 안 함") : `${n(item.sell_through.pct)}%`}</b>{item.sell_through.pct == null ? <small>{item.sell_through.reason}</small> : <small>판매 {n(item.sell_through.sold_units ?? 0)} ÷ (기초 {n(item.sell_through.opening_stock ?? 0)} + 입고 {n(item.sell_through.received_units ?? 0)}) · {item.sell_through.source}</small>}</div></div>
@@ -204,10 +173,18 @@ function ProductDetail({ item, dataset, asOf, onChanged }: { item: WorkProduct; 
       <label>재발주<select value={fields.reorderable == null ? "" : String(fields.reorderable)} onChange={(event) => setFields((value) => ({ ...value, reorderable: event.target.value === "" ? null : event.target.value === "true" }))}><option value="">미확인</option><option value="true">가능</option><option value="false">불가</option></select></label>
       <label>상품 상태<select value={fields.lifecycle || ""} onChange={(event) => setFields((value) => ({ ...value, lifecycle: event.target.value || null }))}><option value="">미확인</option>{Object.entries(lifecycleLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
     </div><button type="button" className="button button-secondary" disabled={busy} onClick={() => void saveInputs()}>입력값 저장</button></details>
-    <div className="work-compare"><div className="work-panel-heading"><div><h3>A/B 가정 비교</h3><small>30일 매출총이익 · 잔여 재고</small></div><span className="work-provenance simulated">시뮬레이션</span></div>
-      {!comparisonReady ? <p className="work-empty">재고·판매가·원가를 먼저 입력하세요.</p> : <><div className="work-ab-inputs"><div><b>A · 현재가 유지</b><label>예상 30일 판매 (개)<input type="number" min="0" value={baselineExpected} onChange={(event) => { setBaselineExpected(Number(event.target.value)); setComparison(null); }}/></label></div><div><b>B · 변경안</b><div className="work-form-grid work-compare-fields"><label>할인율 (%)<input type="number" min="0" max="70" value={discount} onChange={(event) => { setDiscount(Number(event.target.value)); setComparison(null); }}/></label><label>예상 30일 판매 (개)<input type="number" min="0" value={expected} onChange={(event) => { setExpected(Number(event.target.value)); setComparison(null); }}/></label><label>추가 매입 (개)<input type="number" min="0" value={purchase} disabled={item.reorderable !== true} onChange={(event) => { setPurchase(Number(event.target.value)); setComparison(null); }}/></label></div></div></div><button type="button" className="button button-primary" disabled={busy || discount < 0 || discount > 70 || expected < 0 || baselineExpected < 0 || purchase < 0} onClick={() => void compare()}>두 안 계산</button></>}
-      {comparison && <><div className="work-comparison-result">{comparison.map((result, index) => <div key={index}><label className="work-ab-choice"><input type="radio" name={`work-choice-${item.sku}`} checked={selectedOption === (index === 0 ? "A" : "B")} onChange={() => { const choice = index === 0 ? "A" : "B"; setSelectedOption(choice); setAction(choice === "A" ? "현재 유지" : "할인 검토"); }}/><b>{index === 0 ? "A · 현재가" : "B · 변경안"}</b></label><strong>{result.feasible && result.estimated_gross_profit_krw != null ? won(result.estimated_gross_profit_krw) : "재고 부족"}</strong><div className="work-profit-bar"><span style={{ width: `${result.feasible ? Math.max(0, (result.estimated_gross_profit_krw || 0) / maxProfit * 100) : 0}%` }}/></div><small>예상 판매 {n(result.expected_units_30d)}개 · 잔여 {result.estimated_remaining_units == null ? "—" : `${n(result.estimated_remaining_units)}개`}</small>{result.first_gap_date && <small className="work-gap">{result.first_gap_date}부터 재고 공백 · 최대 {n(result.max_gap_units)}개</small>}{result.excluded_notes.map((note) => <small key={note}>{note}</small>)}</div>)}</div><p className="work-ab-delta">B − A 매출총이익: {comparison.every((row) => row.estimated_gross_profit_krw != null) ? won(comparison[1].estimated_gross_profit_krw! - comparison[0].estimated_gross_profit_krw!) : "재고 공백으로 비교 불가"} <abbr title="입력한 판매량을 가정한 계산입니다. 할인으로 판매량이 늘어난 실제 효과나 무작위 배정 A/B 테스트 결과가 아닙니다.">ⓘ</abbr></p><div className="work-decision-form"><label>검토할 조치<select value={action} onChange={(event) => setAction(event.target.value)}>{["할인 검토", "추가 매입 검토", "프로모션 검토", "라이브 노출 검토", "현재 유지", "다음 시즌 기획"].map((value) => <option key={value}>{value}</option>)}</select></label><label>판단 이유<textarea rows={2} value={rationale} onChange={(event) => setRationale(event.target.value)} placeholder="예: 판매량이 몇 개 늘어야 할인안의 이익이 현재가보다 높아지는지 확인했다."/></label><button type="button" className="button button-secondary" disabled={busy || !comparison[selectedOption === "A" ? 0 : 1].feasible || rationale.trim().length < 5} onClick={() => void saveDecision()}>{selectedOption}안 판단 저장</button></div></>}
-    </div>{message && <p className="work-inline-message">{message}</p>}
+    <StrategyPlanner
+      key={[item.sku, asOf, item.units_30d, item.stock_on_hand, item.inbound_units, item.unit_price_krw, item.unit_cost_krw].join("-")}
+      observedUnits={item.units_30d}
+      ready={comparisonReady}
+      canReorder={item.reorderable === true}
+      compareOption={(option) => workApi.compare({ dataset_id: dataset.id, sku: item.sku, as_of_date: asOf, ...option })}
+      saveDecision={async (decision) => {
+        await workApi.saveDecision({ dataset_id: dataset.id, sku: item.sku, as_of_date: asOf, ...decision });
+        await onChanged();
+      }}
+    />
+    {message && <p className="work-inline-message">{message}</p>}
   </section>;
 }
 
@@ -220,7 +197,7 @@ function DecisionRow({ item, dataset, onChanged }: { item: WorkDecision; dataset
     catch (err) { setError(err instanceof Error ? err.message : "실행일을 저장하지 못했습니다."); }
   }
   return <article className="work-decision-row"><div><b>{item.name} · {item.action}</b><span>{item.executed_at ? `실행 기록 ${item.executed_at}` : "판단만 저장"}</span></div><p>{item.rationale}</p><small>{item.as_of_date} 기준 · 관측 14일 {n(item.observed_units_14d)}개 · 가정 이익 {item.estimated_gross_profit_krw == null ? "계산 전" : won(item.estimated_gross_profit_krw)}</small>
-    {item.comparison_snapshot && <small>A {item.comparison_snapshot.A.estimated_gross_profit_krw == null ? "재고 부족" : won(item.comparison_snapshot.A.estimated_gross_profit_krw)} · B {item.comparison_snapshot.B.estimated_gross_profit_krw == null ? "재고 부족" : won(item.comparison_snapshot.B.estimated_gross_profit_krw)} · 선택 {item.comparison_snapshot.selected_option}</small>}
+    {item.comparison_snapshot && <small>현재 운영 {item.comparison_snapshot.A.estimated_gross_profit_krw == null ? "재고 부족" : won(item.comparison_snapshot.A.estimated_gross_profit_krw)} · 제안 전략 {item.comparison_snapshot.B.estimated_gross_profit_krw == null ? "재고 부족" : won(item.comparison_snapshot.B.estimated_gross_profit_krw)} · 선택 {item.comparison_snapshot.selected_option === "A" ? "현재 운영" : "제안 전략"}</small>}
     {dataset.kind === "company" && <div className="work-outcome-controls">{!item.executed_at && <><label>실제 실행일<input type="date" min={item.as_of_date} value={date} onChange={(event) => setDate(event.target.value)}/></label><button className="button button-secondary" onClick={() => void execute()}>실행 기록</button></>}<button className="button button-secondary" onClick={() => void workApi.outcome(item.id).then(setOutcome).catch((err) => setError(err instanceof Error ? err.message : "결과를 불러오지 못했습니다."))}>전후 판매 확인</button></div>}
     {outcome && <div className="work-outcome">{outcome.status === "descriptive" && <div className="work-outcome-metrics"><span>판매량 <b>{n(outcome.before_units_7d || 0)} → {n(outcome.after_units_7d || 0)}개</b></span><span>매출 <b>{outcome.before_revenue_7d == null || outcome.after_revenue_7d == null ? "자료 없음" : `${won(outcome.before_revenue_7d)} → ${won(outcome.after_revenue_7d)}`}</b></span><span>매출총이익 <b>{outcome.before_gross_profit_7d == null || outcome.after_gross_profit_7d == null ? "자료 없음" : `${won(outcome.before_gross_profit_7d)} → ${won(outcome.after_gross_profit_7d)}`}</b></span><span>재고 <b>{outcome.before_stock == null || outcome.after_stock == null ? "두 날짜의 재고 입력 필요" : `${n(outcome.before_stock)} → ${n(outcome.after_stock)}개`}</b></span></div>}<small>{outcome.note}</small></div>}{error && <small className="work-error">{error}</small>}
   </article>;

@@ -4,18 +4,22 @@
 
 의류 MD 실무 경험(시즌 물량 확보, 주간 판매율 기반 재고 조율, 프로모션 운영)에서 출발한 포트폴리오 프로젝트입니다. 자세한 문제 정의와 결과는 [사례 연구](docs/PORTFOLIO_CASE_STUDY.md)에 있습니다.
 
+**처음 사용한다면 [비전공자를 위한 사용 방법](docs/USER_GUIDE.md)에서 설치와 가상 의류 데모 연결부터 따라 하세요.** H&M 원본 파일 없이 핵심 기능을 사용할 수 있습니다.
+
 ## 핵심 기능
 
 - **오늘의 할 일**: 판단 기준일의 재고 위험(재고 0, 소진 위험, 재고 과다, 판매 감소·증가, 판매 미관측)을 우선순위대로 보여주고, 판정 이유와 다음 검토 행동을 함께 표시합니다.
 - **상품 판단**: 판매 흐름, 재고 소진 예상일, 계획 입고, 판매율, 판매가·원가를 한 화면에서 봅니다.
-- **A/B 가정 비교**: MD가 A·B안의 예상 판매량과 B안의 할인·추가 매입량을 수정하고, 매출총이익 차이와 재고 공백을 비교합니다. 선택한 안과 두 계산 결과를 함께 저장합니다. 실제 고객 실험이나 할인 효과 검증은 아닙니다.
+- **판매·마케팅 전략 시뮬레이션**: MD가 할인, 온라인 기획전, 상품 노출, 라이브 노출, 추가 매입 중 전략을 고르고 예상 판매량을 직접 입력합니다. 현재 운영과 제안 전략의 매출총이익·잔여 재고·재고 공백을 비교한 뒤 선택과 이유를 저장합니다.
 - **판단 기록**: 선택한 조치와 이유를 당시의 숫자·출처와 함께 저장합니다.
 - **회고와 추정 검증**: 8/31 판정 이후 실제로 어떻게 팔렸는지 판정 유형별로 보고, 8/31까지의 정보로 만든 9월 판매 추정을 실제 판매와 비교합니다.
 - **자사 파일 업로드**: 상품·판매 CSV/XLSX를 올려 같은 판단을 자기 데이터로 할 수 있습니다.
 
+기획전·진열·라이브의 판매 증가는 자동 추정하지 않습니다. MD가 입력한 예상 판매량을 계산에 사용하며, 방문·노출 자료가 없어 전환율을 계산하지 않습니다. 매출총이익은 상품 원가까지만 반영합니다.
+
 ### H&M 다운로드 없이 체험하기
 
-실행 후 `오늘의 할 일` → **상품·판매 파일 연결**에서 작업공간 이름을 `가상 의류 공개 데모`, 재고 기준일을 `2026-08-31`로 입력합니다. [상품 파일](sample_data/public_demo/products.csv)과 [판매 파일](sample_data/public_demo/sales.csv)을 올리고 **선택 기간의 모든 판매가 포함**, **가상 데이터로 표시**에 체크하세요. 30개 상품의 60일 판매·재고로 우선 확인 목록, 판매율, A/B 가정 비교를 시험할 수 있습니다. 이 두 파일은 전부 **합성 자료**이며 H&M 판매 기록이 아닙니다. 생성 방법은 [데모 생성 스크립트](sample_data/public_demo/build_demo.py)에 있습니다.
+실행 후 `오늘의 할 일` → **상품·판매 파일 연결**에서 작업공간 이름을 `가상 의류 공개 데모`, 재고 기준일을 `2026-08-31`로 입력합니다. [상품 파일](sample_data/public_demo/products.csv)과 [판매 파일](sample_data/public_demo/sales.csv)을 올리고 **선택 기간의 모든 판매가 포함**, **가상 데이터로 표시**에 체크하세요. 30개 상품의 60일 판매·재고로 우선 확인 목록, 판매율, 판매·마케팅 전략 시뮬레이션을 시험할 수 있습니다. 이 두 파일은 전부 **합성 자료**이며 H&M 판매 기록이 아닙니다. 생성 방법은 [데모 생성 스크립트](sample_data/public_demo/build_demo.py)에 있습니다.
 
 ## 데이터 구조: 실제 판매 + 생성한 내부 자료
 
@@ -25,7 +29,7 @@ MD 판단에는 판매·재고·발주·원가가 모두 필요하지만, 공개
 |---|---|---|
 | 수요 | 일별 판매, 작년 같은 기간 판매 | `H&M 관측` (실제 거래 기록) |
 | 내부 운영 조건 | 재고 수불, 발주·리드타임, 판매가·원가, 시즌 상태 | `가상 운영 조건` (회사 내부 자료 대신 생성) |
-| 판단 | 재고 위험, 조치안 비교, 매출총이익, 판매 추정 | `시뮬레이션` |
+| 판단 | 재고 위험, 판매 전략 비교, 매출총이익, 판매 추정 | `시뮬레이션` |
 | 검증 | 판단 기준일 이후 판매 | `H&M 관측` |
 
 판단 기준일은 **2020-08-31**로 고정합니다. 표본 선정, 재고 설정, 발주, 추정 모두 그 이후 판매를 쓰지 않으며, 9월 판매를 바꿔도 8/31까지의 결과가 같은지 테스트로 확인합니다.
@@ -38,11 +42,47 @@ MD 판단에는 판매·재고·발주·원가가 모두 필요하지만, 공개
 | 8/31 재고 과다 판정 20종 | 9/22에도 가상 재고의 93%가 남음 |
 | 9월 공급 부족 | 8/31에 재고 공백을 예상한 11종과 실제 공급 부족이 난 11종이 같음 (부족 수량은 상품마다 크게 다름) |
 
-재고·발주·원가가 가상이므로 **실제 H&M의 품절, 매출, 예측 정확도를 뜻하지 않습니다.** 한계와 시험 후 버린 방식은 [WORKSPACE_DATA.md](docs/WORKSPACE_DATA.md)에 공개했습니다.
+재고·발주·원가가 가상이므로 **실제 H&M의 품절이나 원화 매출을 뜻하지 않습니다.** 위 표의 220종 판매 추정 검증과 46종 운영 시뮬레이션은 표본 범위가 다릅니다. 한계와 시험 후 버린 방식은 [WORKSPACE_DATA.md](docs/WORKSPACE_DATA.md)에 공개했습니다.
+
+## 핵심 코드
+
+계산은 화면이 아닌 백엔드에서 수행합니다. 화면의 전략 선택과 입력은 [StrategyPlanner.tsx](frontend/src/StrategyPlanner.tsx)에 있고, 서버가 아래 규칙으로 결과를 다시 계산해 저장합니다.
+
+**1. 어떤 상품을 먼저 볼지** — [work_risk.py](backend/app/services/work_risk.py)의 판정 순서 일부입니다. 재고가 0이거나 입고 소요일보다 빨리 소진될 때 먼저 확인합니다. 재발주 불가 상품에는 추가 매입을 권하지 않습니다.
+
+```python
+if stock == 0:
+    return "stockout", "입력한 현재 재고가 0개입니다.", "재고·판매 가능 여부 확인"
+if not observed_any:
+    return "not_observed", "기준일까지 관측된 판매가 없습니다. 판매 속도와 소진 예상일을 계산하지 않습니다.", "판매 시작 여부 확인"
+if stock is not None and lead_time_days is not None and cover is not None and cover <= lead_time_days:
+    reason = f"재고 {stock}개는 현재 속도로 약 {cover}일분이며, 입고 소요일 {lead_time_days}일 이하입니다."
+    return "stock_risk", reason, "재발주 불가: 소진 관리" if reorderable is False else "추가 매입 검토"
+```
+
+**2. 입고 전 재고 공백 찾기** — [stock_timeline.py](backend/app/services/stock_timeline.py)는 예상 판매량을 30일에 나누어 매일 공급 가능한 수량과 비교합니다. 30일 총량이 충분해도 입고가 늦으면 첫 부족일을 반환합니다.
+
+```python
+for offset in range(1, horizon + 1):
+    day = as_of + timedelta(offset)
+    supply = stock + sum(units for arrival, units in counted if arrival <= day)
+    if expected_units * offset > supply * horizon:
+        first_gap = first_gap or day
+        max_gap = max(max_gap, ceil(expected_units * offset / horizon - supply))
+```
+
+**3. 전략의 이익과 판단 기록** — [work_routes.py](backend/app/api/work_routes.py)는 할인 적용가로 매출총이익을 계산하고, 저장할 때 두 조건을 서버에서 다시 계산합니다. H&M 시뮬레이션도 [hm_sim_routes.py](backend/app/api/hm_sim_routes.py)에서 같은 날짜별 재고 검사를 사용합니다.
+
+```python
+price = round(inp.unit_price_krw * (1 - payload.discount_pct / 100), 2)
+profit = round(payload.expected_units_30d * (price - inp.unit_cost_krw), 2) if feasible else None
+```
+
+예상 판매량은 사용자가 넣는 가정입니다. 이 코드는 할인이나 노출이 판매를 얼마나 늘리는지 증명하지 않습니다.
 
 ## 실행 방법
 
-> 개발 경험이 없다면 [테스트 따라 하기](docs/TEST_GUIDE.md)를 보세요. 설치부터 테스트 과제까지 순서대로 안내합니다.
+> 개발 경험이 없다면 [프로그램 사용 방법](docs/USER_GUIDE.md)을 보세요. 설치부터 판단 저장까지 순서대로 안내합니다.
 
 필요한 것: Python 3.11 이상, Node.js 20 이상.
 
@@ -52,8 +92,8 @@ MD 판단에는 판매·재고·발주·원가가 모두 필요하지만, 공개
 cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-uvicorn app.main:app --reload
+python -m pip install -r requirements.txt
+python -m uvicorn app.main:app --reload
 ```
 
 API 문서: <http://127.0.0.1:8000/docs>
@@ -62,8 +102,8 @@ API 문서: <http://127.0.0.1:8000/docs>
 
 ```powershell
 cd frontend
-npm install
-npm run dev
+npm.cmd install
+npm.cmd run dev
 ```
 
 기본 API 주소는 `http://127.0.0.1:8000`이며 `VITE_API_BASE_URL`로 바꿀 수 있습니다.
@@ -102,17 +142,17 @@ H&M CSV가 없으면 H&M 시뮬레이션 테스트는 건너뜁니다.
 
 | 경로 | 내용 |
 |---|---|
-| `backend/app/api/work_routes.py` | 작업공간, 자사 업로드, 조치안 비교, 판단 기록 |
+| `backend/app/api/work_routes.py` | 작업공간, 자사 업로드, 판매 전략 비교, 판단 기록 |
 | `backend/app/api/hm_sim_routes.py` | H&M 운영 시뮬레이션, 회고, 9월 추정 검증 |
 | `backend/app/services/` | 재고 위험 규칙, 날짜별 재고 확인, 판매율, 판매 추정 |
 | `backend/scripts/import_hm.py` | H&M 원본에서 표본 적재 |
-| `frontend/src/WorkPage.tsx`, `HmSimulation.tsx` | 화면 |
+| `frontend/src/WorkPage.tsx`, `HmSimulation.tsx`, `StrategyPlanner.tsx` | 상품 화면과 참여형 판매 전략 비교 |
 | `sample_data/hm_operating_case/` | 가상 운영 조건 생성·검증 스크립트와 [데이터 QA](sample_data/hm_operating_case/DATA_QA.md) |
 | `sample_data/fashion_fw_case/` | 종료한 F/W 합성 사례. 회사 내부 자료(재고 수불, 시즌 상태, 작년 비교) 설계 참고용 |
 
 ## 문서
 
-- [테스트 따라 하기](docs/TEST_GUIDE.md) — 비전공자용 설치·실행·테스트 과제
+- [프로그램 사용 방법](docs/USER_GUIDE.md) — 비전공자용 설치·실행·자료 연결·판단 저장
 - [사례 연구](docs/PORTFOLIO_CASE_STUDY.md) — 문제, 데이터 설계, 8/31 판단, 9월 회고, 한계, 보완점, 역할 구분
 - [작업공간 데이터와 판단 기준](docs/WORKSPACE_DATA.md) — 계산식, 출처 구분, 추정 방법과 결과, 한계
 - [데이터 출처와 보관](docs/DATA_SOURCES.md) — 원본 파일 해시, 저장소에 두지 않는 파일, 보관 원칙
