@@ -189,6 +189,8 @@ class HmSimulationTests(unittest.TestCase):
         self.assertEqual(snapshot["observed"]["source"], "H&M 관측")
         self.assertEqual(snapshot["conditions"]["source"], "가상 운영 조건")
         self.assertEqual(snapshot["comparison"]["source"], "시뮬레이션")
+        self.assertEqual(snapshot["alternatives"]["selected_option"], "B")
+        self.assertEqual(snapshot["alternatives"]["B"]["estimated_gross_profit_krw"], snapshot["comparison"]["estimated_gross_profit_krw"])
         self.db.execute(update(WorkSimPrice).values(selling_price_krw=WorkSimPrice.selling_price_krw * 2,
                                                      list_price_krw=WorkSimPrice.list_price_krw * 2))
         self.db.commit()
@@ -196,6 +198,22 @@ class HmSimulationTests(unittest.TestCase):
         stored = sim.decisions(scenario.id, self.db)[0]
         self.assertNotEqual(changed["estimated_gross_profit_krw"], stored["snapshot"]["comparison"]["estimated_gross_profit_krw"])
         self.assertEqual(stored["snapshot"], snapshot)
+
+    def test_ab_choice_a_saves_both_options(self):
+        scenario = self.scenario()
+        item = next(p for p in sim.analysis(scenario.id, self.db)["products"]
+                    if p["conditions"]["stock_on_hand"] >= 20)
+        saved = sim.save_decision(sim.SimDecisionPayload(
+            scenario_id=scenario.id, sku=item["sku"], discount_pct=10,
+            expected_units_30d=5, purchase_units=0,
+            baseline_expected_units_30d=4, selected_option="A",
+            action="현재 유지", rationale="현재가 유지와 할인안을 비교했습니다.",
+        ), self.db)
+        alternatives = saved["snapshot"]["alternatives"]
+        self.assertEqual(alternatives["selected_option"], "A")
+        self.assertEqual(saved["snapshot"]["comparison"]["estimated_gross_profit_krw"],
+                         alternatives["A"]["estimated_gross_profit_krw"])
+        self.assertEqual(alternatives["B"]["expected_units_30d"], 5)
 
     def test_compare_checks_stock_day_by_day_against_planned_receipts(self):
         scenario = self.scenario()

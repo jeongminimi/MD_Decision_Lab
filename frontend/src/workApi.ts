@@ -55,6 +55,7 @@ export interface WorkDecision {
   expected_units_30d: number | null; purchase_units: number | null;
   assumed_stock: number | null; estimated_gross_profit_krw: number | null;
   executed_at: string | null; created_at: string;
+  comparison_snapshot?: { selected_option: "A" | "B"; A: WorkComparison; B: WorkComparison } | null;
 }
 
 export interface WorkInputs {
@@ -98,7 +99,7 @@ export const workApi = {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
   }),
   decisions: (id: number) => call<WorkDecision[]>(`/api/work/datasets/${id}/decisions`),
-  saveDecision: (body: WorkOption & { action: string; rationale: string }) => call<{ id: number; saved: boolean }>(
+  saveDecision: (body: WorkOption & { action: string; rationale: string; baseline_expected_units_30d?: number; selected_option?: "A" | "B" }) => call<{ id: number; saved: boolean }>(
     "/api/work/decisions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
   execute: (id: number, date: string) => call<{ id: number; executed_at: string }>(
     `/api/work/decisions/${id}/execute`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ executed_at: date }) }),
@@ -178,7 +179,8 @@ export interface SimDecision {
   id: number; sku: string; name: string; as_of_date: string; action: string; rationale: string; created_at: string;
   snapshot: { scenario: { id: number; name: string; as_of_date: string };
     observed: SimProduct["observed"]; conditions: SimProduct["conditions"]; signal: SimProduct["signal"];
-    comparison: SimComparison; bias_note: string };
+    comparison: SimComparison; bias_note: string;
+    alternatives?: { selected_option: "A" | "B"; A: SimComparison; B: SimComparison } };
 }
 
 export interface SimOption { scenario_id: number; sku: string; discount_pct: number; expected_units_30d: number; purchase_units: number }
@@ -194,5 +196,5 @@ export const simApi = {
     call<SimProductDetail>(`/api/work/sim/products/${encodeURIComponent(sku)}?scenario_id=${scenarioId}`),
   compare: (body: SimOption) => call<SimComparison>("/api/work/sim/compare", json(body)),
   decisions: (scenarioId: number) => call<SimDecision[]>(`/api/work/sim/decisions?scenario_id=${scenarioId}`),
-  saveDecision: (body: SimOption & { action: string; rationale: string }) => call<SimDecision>("/api/work/sim/decisions", json(body)),
+  saveDecision: (body: SimOption & { action: string; rationale: string; baseline_expected_units_30d?: number; selected_option?: "A" | "B" }) => call<SimDecision>("/api/work/sim/decisions", json(body)),
 };

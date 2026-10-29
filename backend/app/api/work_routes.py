@@ -7,6 +7,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 from typing import Literal
 from sqlalchemy import select
@@ -525,11 +526,18 @@ def compare(payload: WorkComparePayload, db: Session = Depends(get_db)):
 class WorkDecisionPayload(WorkComparePayload):
     action: str = Field(min_length=2, max_length=32)
     rationale: str = Field(min_length=5, max_length=1000)
+    baseline_expected_units_30d: int | None = Field(default=None, ge=0, le=1_000_000)
+    selected_option: Literal["A", "B"] = "B"
 
 
 @router.post("/decisions")
 def save_decision(payload: WorkDecisionPayload, db: Session = Depends(get_db)):
-    calculated = _compare(payload, db)
+    proposed = _compare(payload, db)
+    baseline = _compare(WorkComparePayload(dataset_id=payload.dataset_id, sku=payload.sku,
+        as_of_date=payload.as_of_date, discount_pct=0,
+        expected_units_30d=payload.baseline_expected_units_30d if payload.baseline_expected_units_30d is not None else payload.expected_units_30d,
+        purchase_units=0), db)
+    calculated = baseline if payload.selected_option == "A" else proposed
     if not calculated["feasible"]:
         raise HTTPException(400, f"{calculated['first_gap_date']}부터 재고가 비어 가정 판매량을 공급할 수 없습니다 "
                                  f"(최대 {calculated['max_gap_units']}개 부족). 수량이나 입고 시점을 수정하세요.")
@@ -539,10 +547,12 @@ def save_decision(payload: WorkDecisionPayload, db: Session = Depends(get_db)):
     decision = WorkDecision(product_id=product.id, as_of_date=payload.as_of_date,
                             action=payload.action, rationale=payload.rationale.strip(),
                             observed_units_14d=sum(row.units for row in rows),
-                            discount_pct=payload.discount_pct, expected_units_30d=payload.expected_units_30d,
-                            purchase_units=payload.purchase_units,
+                             discount_pct=calculated["discount_pct"], expected_units_30d=calculated["expected_units_30d"],
+                             purchase_units=calculated["purchase_units"],
                             assumed_stock=calculated["stock_and_inbound_units"],
-                            estimated_gross_profit=calculated["estimated_gross_profit_krw"])
+                             estimated_gross_profit=calculated["estimated_gross_profit_krw"],
+                             comparison_snapshot=jsonable_encoder({"selected_option": payload.selected_option,
+                                 "A": baseline, "B": proposed}))
     db.add(decision)
     db.commit()
     return {"id": decision.id, "saved": True, "note": "판단과 계산 당시의 숫자를 저장했습니다. 실제 조치 완료나 성과를 뜻하지 않습니다."}
@@ -560,6 +570,7 @@ def decisions(dataset_id: int, db: Session = Depends(get_db)):
              "discount_pct": item.discount_pct, "expected_units_30d": item.expected_units_30d,
              "purchase_units": item.purchase_units, "assumed_stock": item.assumed_stock,
              "estimated_gross_profit_krw": item.estimated_gross_profit,
+              "comparison_snapshot": item.comparison_snapshot,
              "executed_at": item.executed_at, "created_at": item.created_at} for item, product in rows]
 
 

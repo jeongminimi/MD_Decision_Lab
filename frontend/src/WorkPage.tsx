@@ -6,7 +6,7 @@ import HmSimulation from "./HmSimulation";
 import "./work.css";
 
 const n = (value: number) => new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 1 }).format(value);
-const won = (value: number) => `₩${n(value)}`;
+const won = (value: number) => value < 0 ? `-₩${n(Math.abs(value))}` : `₩${n(value)}`;
 const nextDay = (day: string) => { const next = new Date(`${day}T00:00:00Z`); next.setUTCDate(next.getUTCDate() + 1); return next.toISOString().slice(0, 10); };
 const riskLabels: Record<string, string> = {
   stockout: "재고 확인", stock_risk: "소진 위험", overstock: "재고 과다",
@@ -82,8 +82,8 @@ export default function WorkPage({ view, onNavigate }: { view: WorkView; onNavig
     </header>
     {error && <div className="error-banner"><TriangleAlert size={17}/>{error}</div>}
     {notice && <div className="notice-banner"><Check size={16}/>{notice}</div>}
-    {dataset?.kind === "hm" && <section className="sim-mode" aria-label="H&M 보기 방식"><button type="button" className={hmMode === "simulation" ? "active" : ""} aria-pressed={hmMode === "simulation"} onClick={() => setHmMode("simulation")}>운영 시뮬레이션 보기</button><button type="button" className={hmMode === "observed" ? "active" : ""} aria-pressed={hmMode === "observed"} onClick={() => setHmMode("observed")}>실제 판매만 보기</button><small>{hmMode === "observed" ? "H&M 관측 판매만 표시합니다. 재고·원가는 직접 입력한 경우에만 계산합니다." : "판매는 H&M 실제 기록, 재고·발주·가격·원가는 공개 자료로 구할 수 없는 회사 내부 자료를 대신한 가상 운영 조건입니다."}</small></section>}
-    {dataset?.kind === "hm" && !simActive && <p className="sim-bias"><TriangleAlert size={15}/>{HM_SAMPLE_BIAS}</p>}
+    {dataset?.kind === "hm" && <section className="sim-mode" aria-label="H&M 보기 방식"><button type="button" className={hmMode === "simulation" ? "active" : ""} aria-pressed={hmMode === "simulation"} onClick={() => setHmMode("simulation")}>운영 시뮬레이션 보기</button><button type="button" className={hmMode === "observed" ? "active" : ""} aria-pressed={hmMode === "observed"} onClick={() => setHmMode("observed")}>실제 판매만 보기</button><small>{hmMode === "observed" ? "H&M 판매 기록만 표시" : "판매: H&M 관측 · 재고·원가: 가상"}</small></section>}
+    {dataset?.kind === "hm" && !simActive && <details className="work-source-details"><summary><Info size={15}/> 데이터 범위</summary><p>{HM_SAMPLE_BIAS}</p></details>}
     {simActive && datasetId != null && <HmSimulation datasetId={datasetId} view={view} onNavigate={onNavigate}/>}
     {!simActive && <>
     {dataset && <section className="work-filters" aria-label="분석 범위">
@@ -92,7 +92,7 @@ export default function WorkPage({ view, onNavigate }: { view: WorkView; onNavig
       <label>분석 기준일<input type="date" min={dataset.start_date} max={dataset.end_date} value={asOf} onChange={(event) => { setAsOf(event.target.value); setSelectedSku(""); }}/></label>
       <button type="button" className="button button-secondary" onClick={() => void refresh()}><RefreshCw size={15}/> 새로고침</button>
     </section>}
-    {dataset && <p className="work-source-note"><Info size={15}/>{dataset.source_note}</p>}
+    {dataset && <details className="work-source-details"><summary><Info size={15}/> 데이터 출처</summary><p>{dataset.source_note}</p></details>}
     {view === "overview" && <>
       {analysis && <>
         <section className="work-summary" aria-label="핵심 지표"><div><small>최근 30일 판매</small><strong>{n(analysis.summary.units_30d)}개</strong></div><div><small>우선 확인</small><strong>{n(analysis.summary.attention_count)}개</strong></div><div><small>분석 상품</small><strong>{n(analysis.summary.total_products)}종</strong></div></section>
@@ -106,7 +106,7 @@ export default function WorkPage({ view, onNavigate }: { view: WorkView; onNavig
     </>}
     {view === "products" && analysis && <>
       <section className="panel work-panel"><div className="work-panel-heading"><div><h2>상품별 판매·재고</h2><small>판매 수치는 관측값, 재고·원가는 입력한 기준일의 값입니다.</small></div><input className="work-search" aria-label="상품 검색" placeholder="상품명 또는 SKU 검색" value={query} onChange={(event) => setQuery(event.target.value)}/></div>
-        <div className="table-scroll"><table className="data-table work-table"><thead><tr><th>상품</th><th>최근 14일 / 직전</th><th><abbr title="현재 재고를 최근 판매 속도로 나눈 예상 일수. 재고를 입력한 경우에만 표시합니다.">재고 / 소진 예상일</abbr></th><th>다음 검토</th></tr></thead><tbody>{visible.map((item) => <tr key={item.sku} className={focus?.sku === item.sku ? "selected-row" : ""}><td><button type="button" onClick={() => setSelectedSku(item.sku)}><b>{item.name}</b><small>{item.sku} · {item.category}</small></button></td><td>{n(item.units_14d)}개 / {n(item.prior_14d)}개<div className="work-mini-bar"><span style={{ width: `${Math.min(100, item.units_14d / Math.max(1, item.prior_14d, item.units_14d) * 100)}%` }}/></div></td><td>{item.stock_on_hand == null ? "재고 입력 필요" : `${n(item.stock_on_hand)}개`}<small>{item.days_of_cover == null ? "소진일 계산 전" : `약 ${n(item.days_of_cover)}일`}</small></td><td><span className={`work-risk ${item.risk}`}>{riskLabels[item.risk] || item.risk}</span><small>{item.action}</small></td></tr>)}</tbody></table></div>
+        <div className="table-scroll"><table className="data-table work-table"><thead><tr><th>상품</th><th>최근 14일 / 직전</th><th><abbr title="현재 재고를 최근 판매 속도로 나눈 예상 일수. 재고를 입력한 경우에만 표시합니다.">재고 / 소진 예상일</abbr></th><th>다음 검토</th></tr></thead><tbody>{visible.map((item) => <tr key={item.sku} className={focus?.sku === item.sku ? "selected-row" : ""}><td><button type="button" className="work-table-product" onClick={() => setSelectedSku(item.sku)}>{item.image_ref && <img className="work-product-image" src={item.image_ref} alt="" loading="lazy"/>}<span><b>{item.name}</b><small>{item.sku} · {item.category}</small></span></button></td><td>{n(item.units_14d)}개 / {n(item.prior_14d)}개<div className="work-mini-bar"><span style={{ width: `${Math.min(100, item.units_14d / Math.max(1, item.prior_14d, item.units_14d) * 100)}%` }}/></div></td><td>{item.stock_on_hand == null ? "재고 입력 필요" : `${n(item.stock_on_hand)}개`}<small>{item.days_of_cover == null ? "소진일 계산 전" : `약 ${n(item.days_of_cover)}일`}</small></td><td><span className={`work-risk ${item.risk}`}>{riskLabels[item.risk] || item.risk}</span><small>{item.action}</small></td></tr>)}</tbody></table></div>
       </section>
       {focus && datasetId != null && <ProductDetail key={`${datasetId}-${focus.sku}-${asOf}`} item={focus} dataset={dataset!} asOf={asOf} onChanged={() => refresh()}/>}
     </>}
@@ -145,8 +145,10 @@ function ProductDetail({ item, dataset, asOf, onChanged }: { item: WorkProduct; 
     unit_cost_krw: item.unit_cost_krw, reorderable: item.reorderable, lifecycle: item.lifecycle,
   });
   const [discount, setDiscount] = useState(15);
+  const [baselineExpected, setBaselineExpected] = useState(item.units_30d);
   const [expected, setExpected] = useState(item.units_30d);
   const [purchase, setPurchase] = useState(0);
+  const [selectedOption, setSelectedOption] = useState<"A" | "B">("B");
   const [action, setAction] = useState("할인 검토");
   const [rationale, setRationale] = useState("");
   const [comparison, setComparison] = useState<[WorkComparison, WorkComparison] | null>(null);
@@ -166,7 +168,7 @@ function ProductDetail({ item, dataset, asOf, onChanged }: { item: WorkProduct; 
     try {
       const common = { dataset_id: dataset.id, sku: item.sku, as_of_date: asOf };
       const results = await Promise.all([
-        workApi.compare({ ...common, discount_pct: 0, expected_units_30d: item.units_30d, purchase_units: 0 }),
+        workApi.compare({ ...common, discount_pct: 0, expected_units_30d: baselineExpected, purchase_units: 0 }),
         workApi.compare({ ...common, discount_pct: discount, expected_units_30d: expected, purchase_units: purchase }),
       ]);
       setComparison(results as [WorkComparison, WorkComparison]);
@@ -178,8 +180,9 @@ function ProductDetail({ item, dataset, asOf, onChanged }: { item: WorkProduct; 
     setBusy(true); setMessage("");
     try {
       await workApi.saveDecision({ dataset_id: dataset.id, sku: item.sku, as_of_date: asOf,
-        discount_pct: discount, expected_units_30d: expected, purchase_units: purchase, action, rationale });
-      await onChanged(); setMessage("조치안과 판단 이유를 기록했습니다. 실제 실행·성과로 표시하지 않습니다.");
+        discount_pct: discount, expected_units_30d: expected, purchase_units: purchase,
+        baseline_expected_units_30d: baselineExpected, selected_option: selectedOption, action, rationale });
+      await onChanged(); setMessage(`${selectedOption}안과 판단 이유를 저장했습니다.`);
     } catch (err) { setMessage(err instanceof Error ? err.message : "판단을 저장하지 못했습니다."); }
     finally { setBusy(false); }
   }
@@ -201,9 +204,9 @@ function ProductDetail({ item, dataset, asOf, onChanged }: { item: WorkProduct; 
       <label>재발주<select value={fields.reorderable == null ? "" : String(fields.reorderable)} onChange={(event) => setFields((value) => ({ ...value, reorderable: event.target.value === "" ? null : event.target.value === "true" }))}><option value="">미확인</option><option value="true">가능</option><option value="false">불가</option></select></label>
       <label>상품 상태<select value={fields.lifecycle || ""} onChange={(event) => setFields((value) => ({ ...value, lifecycle: event.target.value || null }))}><option value="">미확인</option>{Object.entries(lifecycleLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
     </div><button type="button" className="button button-secondary" disabled={busy} onClick={() => void saveInputs()}>입력값 저장</button></details>
-    <div className="work-compare"><div className="work-panel-heading"><div><h3>두 조치안 비교</h3><small>A: 현재가와 최근 30일 판매량 유지 · B: 내가 입력한 가정</small></div><span className="work-provenance simulated">시뮬레이션</span></div>
-      {!comparisonReady ? <p className="work-empty">같은 기준일의 재고·입고 예정·원화 판매가·원가를 입력하면 매출총이익을 비교할 수 있습니다. 입고가 없으면 0을 입력하세요.</p> : <><div className="work-form-grid work-compare-fields"><label>B안 할인율 (%)<input type="number" min="0" max="70" value={discount} onChange={(event) => { setDiscount(Number(event.target.value)); setComparison(null); }}/></label><label>B안 예상 30일 판매 (개)<input type="number" min="0" value={expected} onChange={(event) => { setExpected(Number(event.target.value)); setComparison(null); }}/></label><label>추가 매입 (개)<input type="number" min="0" value={purchase} disabled={item.reorderable !== true} onChange={(event) => { setPurchase(Number(event.target.value)); setComparison(null); }}/></label></div><button type="button" className="button button-primary" disabled={busy || discount < 0 || discount > 70 || expected < 0 || purchase < 0} onClick={() => void compare()}>숫자로 비교</button></>}
-      {comparison && <><div className="work-comparison-result">{comparison.map((result, index) => <div key={index}><b>{index === 0 ? "A · 현재 유지" : "B · 변경안"}</b><strong>{result.feasible && result.estimated_gross_profit_krw != null ? won(result.estimated_gross_profit_krw) : "재고 부족"}</strong><div className="work-profit-bar"><span style={{ width: `${result.feasible ? Math.max(0, (result.estimated_gross_profit_krw || 0) / maxProfit * 100) : 0}%` }}/></div><small>30일 가용 {n(result.available_units)}개 · 예상 잔여 {result.estimated_remaining_units == null ? "계산 불가" : `${n(result.estimated_remaining_units)}개`}</small>{result.first_gap_date && <small className="work-gap">{result.first_gap_date}부터 재고 공백 · 최대 {n(result.max_gap_units)}개 부족</small>}{result.excluded_notes.map((note) => <small key={note}>{note}</small>)}</div>)}</div><p className="work-caveat">입력한 판매량을 가정한 비교입니다. 할인으로 판매가 늘었다는 증거가 아닙니다. 예상 판매량을 30일에 고르게 나눠 입고일 전에 재고가 비는지 날짜별로 확인합니다.</p><div className="work-decision-form"><label>검토할 조치<select value={action} onChange={(event) => setAction(event.target.value)}>{["할인 검토", "추가 매입 검토", "프로모션 검토", "라이브 노출 검토", "현재 유지", "다음 시즌 기획"].map((value) => <option key={value}>{value}</option>)}</select></label><label>판단 이유<textarea rows={2} value={rationale} onChange={(event) => setRationale(event.target.value)} placeholder="예: 최근 2주 판매가 감소했지만 재고가 40일분이므로 15% 할인안을 검토한다."/></label><button type="button" className="button button-secondary" disabled={busy || !comparison[1].feasible || rationale.trim().length < 5} onClick={() => void saveDecision()}>판단 기록 저장</button></div></>}
+    <div className="work-compare"><div className="work-panel-heading"><div><h3>A/B 가정 비교</h3><small>30일 매출총이익 · 잔여 재고</small></div><span className="work-provenance simulated">시뮬레이션</span></div>
+      {!comparisonReady ? <p className="work-empty">재고·판매가·원가를 먼저 입력하세요.</p> : <><div className="work-ab-inputs"><div><b>A · 현재가 유지</b><label>예상 30일 판매 (개)<input type="number" min="0" value={baselineExpected} onChange={(event) => { setBaselineExpected(Number(event.target.value)); setComparison(null); }}/></label></div><div><b>B · 변경안</b><div className="work-form-grid work-compare-fields"><label>할인율 (%)<input type="number" min="0" max="70" value={discount} onChange={(event) => { setDiscount(Number(event.target.value)); setComparison(null); }}/></label><label>예상 30일 판매 (개)<input type="number" min="0" value={expected} onChange={(event) => { setExpected(Number(event.target.value)); setComparison(null); }}/></label><label>추가 매입 (개)<input type="number" min="0" value={purchase} disabled={item.reorderable !== true} onChange={(event) => { setPurchase(Number(event.target.value)); setComparison(null); }}/></label></div></div></div><button type="button" className="button button-primary" disabled={busy || discount < 0 || discount > 70 || expected < 0 || baselineExpected < 0 || purchase < 0} onClick={() => void compare()}>두 안 계산</button></>}
+      {comparison && <><div className="work-comparison-result">{comparison.map((result, index) => <div key={index}><label className="work-ab-choice"><input type="radio" name={`work-choice-${item.sku}`} checked={selectedOption === (index === 0 ? "A" : "B")} onChange={() => { const choice = index === 0 ? "A" : "B"; setSelectedOption(choice); setAction(choice === "A" ? "현재 유지" : "할인 검토"); }}/><b>{index === 0 ? "A · 현재가" : "B · 변경안"}</b></label><strong>{result.feasible && result.estimated_gross_profit_krw != null ? won(result.estimated_gross_profit_krw) : "재고 부족"}</strong><div className="work-profit-bar"><span style={{ width: `${result.feasible ? Math.max(0, (result.estimated_gross_profit_krw || 0) / maxProfit * 100) : 0}%` }}/></div><small>예상 판매 {n(result.expected_units_30d)}개 · 잔여 {result.estimated_remaining_units == null ? "—" : `${n(result.estimated_remaining_units)}개`}</small>{result.first_gap_date && <small className="work-gap">{result.first_gap_date}부터 재고 공백 · 최대 {n(result.max_gap_units)}개</small>}{result.excluded_notes.map((note) => <small key={note}>{note}</small>)}</div>)}</div><p className="work-ab-delta">B − A 매출총이익: {comparison.every((row) => row.estimated_gross_profit_krw != null) ? won(comparison[1].estimated_gross_profit_krw! - comparison[0].estimated_gross_profit_krw!) : "재고 공백으로 비교 불가"} <abbr title="입력한 판매량을 가정한 계산입니다. 할인으로 판매량이 늘어난 실제 효과나 무작위 배정 A/B 테스트 결과가 아닙니다.">ⓘ</abbr></p><div className="work-decision-form"><label>검토할 조치<select value={action} onChange={(event) => setAction(event.target.value)}>{["할인 검토", "추가 매입 검토", "프로모션 검토", "라이브 노출 검토", "현재 유지", "다음 시즌 기획"].map((value) => <option key={value}>{value}</option>)}</select></label><label>판단 이유<textarea rows={2} value={rationale} onChange={(event) => setRationale(event.target.value)} placeholder="예: 판매량이 몇 개 늘어야 할인안의 이익이 현재가보다 높아지는지 확인했다."/></label><button type="button" className="button button-secondary" disabled={busy || !comparison[selectedOption === "A" ? 0 : 1].feasible || rationale.trim().length < 5} onClick={() => void saveDecision()}>{selectedOption}안 판단 저장</button></div></>}
     </div>{message && <p className="work-inline-message">{message}</p>}
   </section>;
 }
@@ -217,6 +220,7 @@ function DecisionRow({ item, dataset, onChanged }: { item: WorkDecision; dataset
     catch (err) { setError(err instanceof Error ? err.message : "실행일을 저장하지 못했습니다."); }
   }
   return <article className="work-decision-row"><div><b>{item.name} · {item.action}</b><span>{item.executed_at ? `실행 기록 ${item.executed_at}` : "판단만 저장"}</span></div><p>{item.rationale}</p><small>{item.as_of_date} 기준 · 관측 14일 {n(item.observed_units_14d)}개 · 가정 이익 {item.estimated_gross_profit_krw == null ? "계산 전" : won(item.estimated_gross_profit_krw)}</small>
+    {item.comparison_snapshot && <small>A {item.comparison_snapshot.A.estimated_gross_profit_krw == null ? "재고 부족" : won(item.comparison_snapshot.A.estimated_gross_profit_krw)} · B {item.comparison_snapshot.B.estimated_gross_profit_krw == null ? "재고 부족" : won(item.comparison_snapshot.B.estimated_gross_profit_krw)} · 선택 {item.comparison_snapshot.selected_option}</small>}
     {dataset.kind === "company" && <div className="work-outcome-controls">{!item.executed_at && <><label>실제 실행일<input type="date" min={item.as_of_date} value={date} onChange={(event) => setDate(event.target.value)}/></label><button className="button button-secondary" onClick={() => void execute()}>실행 기록</button></>}<button className="button button-secondary" onClick={() => void workApi.outcome(item.id).then(setOutcome).catch((err) => setError(err instanceof Error ? err.message : "결과를 불러오지 못했습니다."))}>전후 판매 확인</button></div>}
     {outcome && <div className="work-outcome">{outcome.status === "descriptive" && <div className="work-outcome-metrics"><span>판매량 <b>{n(outcome.before_units_7d || 0)} → {n(outcome.after_units_7d || 0)}개</b></span><span>매출 <b>{outcome.before_revenue_7d == null || outcome.after_revenue_7d == null ? "자료 없음" : `${won(outcome.before_revenue_7d)} → ${won(outcome.after_revenue_7d)}`}</b></span><span>매출총이익 <b>{outcome.before_gross_profit_7d == null || outcome.after_gross_profit_7d == null ? "자료 없음" : `${won(outcome.before_gross_profit_7d)} → ${won(outcome.after_gross_profit_7d)}`}</b></span><span>재고 <b>{outcome.before_stock == null || outcome.after_stock == null ? "두 날짜의 재고 입력 필요" : `${n(outcome.before_stock)} → ${n(outcome.after_stock)}개`}</b></span></div>}<small>{outcome.note}</small></div>}{error && <small className="work-error">{error}</small>}
   </article>;

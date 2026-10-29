@@ -35,4 +35,8 @@ def ensure_schema_compatibility(target_engine=None):
                                            ("opening_date", "DATE"), ("received_units", "INTEGER")):
                     if col_name not in cols:
                         conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_type}"))
+        if "work_decisions" in tables:
+            cols = {row[1] for row in conn.execute(text("PRAGMA table_info(work_decisions)")).fetchall()}
+            if "comparison_snapshot" not in cols:
+                conn.execute(text("ALTER TABLE work_decisions ADD COLUMN comparison_snapshot JSON"))
         conn.commit()

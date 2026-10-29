@@ -2,8 +2,10 @@
 
 from collections import defaultdict
 from datetime import date, timedelta
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -350,6 +352,8 @@ def compare(payload: SimComparePayload, db: Session = Depends(get_db)):
 class SimDecisionPayload(SimComparePayload):
     action: str = Field(min_length=2, max_length=32)
     rationale: str = Field(min_length=5, max_length=1000)
+    baseline_expected_units_30d: int | None = Field(default=None, ge=0, le=1_000_000)
+    selected_option: Literal["A", "B"] = "B"
 
 
 def _decision_out(decision: WorkSimDecision, sku: str, name: str) -> dict:
@@ -362,7 +366,11 @@ def _decision_out(decision: WorkSimDecision, sku: str, name: str) -> dict:
 def save_decision(payload: SimDecisionPayload, db: Session = Depends(get_db)):
     if len(payload.rationale.strip()) < 5:
         raise HTTPException(422, "판단 이유를 다섯 글자 이상 입력하세요.")
-    result, state, scenario = _compare(payload, db)
+    proposed, state, scenario = _compare(payload, db)
+    baseline, _, _ = _compare(SimComparePayload(scenario_id=payload.scenario_id, sku=payload.sku,
+        discount_pct=0, expected_units_30d=payload.baseline_expected_units_30d if payload.baseline_expected_units_30d is not None else state["observed"]["units_30d"],
+        purchase_units=0), db)
+    result = baseline if payload.selected_option == "A" else proposed
     if not result["feasible"]:
         raise HTTPException(400, _gap_message(result))
     snapshot = {"scenario": {"id": scenario.id, "name": scenario.name, "as_of_date": scenario.as_of_date.isoformat()},
@@ -376,6 +384,8 @@ def save_decision(payload: SimDecisionPayload, db: Session = Depends(get_db)):
                                "first_gap_date": _iso(result["first_gap_date"]),
                                "receipts_counted": [{"date": r["date"].isoformat(), "units": r["units"]}
                                                     for r in result["receipts_counted"]]},
+                 "alternatives": jsonable_encoder({"selected_option": payload.selected_option,
+                                                   "A": baseline, "B": proposed}),
                 "bias_note": scenario.bias_note}
     decision = WorkSimDecision(scenario_id=scenario.id, product_id=state["product_id"], as_of_date=scenario.as_of_date,
                                action=payload.action, rationale=payload.rationale.strip(), snapshot=snapshot)

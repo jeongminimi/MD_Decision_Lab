@@ -14,17 +14,11 @@ const labels: Record<WorkView, string> = {
 export default function App() {
   const [view, setView] = useState<WorkView>("overview");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  // Product photos come from the H&M Kaggle data; hide them for screenshots and demos shared outside.
-  const [hidePhotos, setHidePhotos] = useState(() => {
-    if (new URLSearchParams(window.location.search).get("photos") === "off") return true;
-    try { return window.localStorage.getItem("hidePhotos") === "1"; } catch { return false; }
-  });
+  // Photos are visible on every fresh visit; hiding them is only for the current page session.
+  const [hidePhotos, setHidePhotos] = useState(false);
 
   function togglePhotos() {
-    setHidePhotos((value) => {
-      try { window.localStorage.setItem("hidePhotos", value ? "0" : "1"); } catch { /* storage unavailable */ }
-      return !value;
-    });
+    setHidePhotos((value) => !value);
   }
 
   function navigate(next: WorkView) {

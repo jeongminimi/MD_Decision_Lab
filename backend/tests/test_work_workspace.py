@@ -93,6 +93,20 @@ class WorkWorkspaceTests(unittest.TestCase):
         mark_executed(saved.id, ExecutionPayload(executed_at=date(2026, 9, 2)), self.db)
         self.assertEqual(outcome(saved.id, self.db)["status"], "waiting_for_data")
 
+    def test_ab_decision_saves_both_server_calculated_options(self):
+        created = self.upload()
+        result = save_decision(WorkDecisionPayload(
+            dataset_id=created["id"], sku="A-1", as_of_date=date(2026, 9, 2),
+            discount_pct=20, expected_units_30d=4, purchase_units=0,
+            baseline_expected_units_30d=3, selected_option="A",
+            action="현재 유지", rationale="현재 가격의 이익이 더 높아서 유지합니다.",
+        ), self.db)
+        saved = self.db.get(WorkDecision, result["id"])
+        self.assertEqual(saved.comparison_snapshot["selected_option"], "A")
+        self.assertEqual(saved.comparison_snapshot["A"]["estimated_gross_profit_krw"], 120000)
+        self.assertEqual(saved.comparison_snapshot["B"]["estimated_gross_profit_krw"], 96000)
+        self.assertEqual(saved.estimated_gross_profit, 120000)
+
     def test_new_sales_enable_descriptive_outcome_only_after_full_window(self):
         initial = SALES.split(b"\n", 1)[0] + b"\nA-1,2026-08-31,1,80000,40000\n" + SALES.split(b"\n", 1)[1]
         created = self.upload(initial)

@@ -161,6 +161,7 @@ class WorkDecision(Base):
     purchase_units: Mapped[int | None] = mapped_column(Integer, nullable=True)
     assumed_stock: Mapped[int | None] = mapped_column(Integer, nullable=True)
     estimated_gross_profit: Mapped[float | None] = mapped_column(Float, nullable=True)
+    comparison_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     executed_at: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
