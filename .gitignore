@@ -4,6 +4,8 @@ __pycache__/
 *$py.class
 *.so
 .pytest_cache/
+backend/test_tmp/
+backend/.test_tmp/
 backend/.venv/
 .venv/
 env/
@@ -21,6 +23,17 @@ dist/
 
 # H&M Kaggle-derived data: regenerate locally with sample_data/hm_operating_case/generate_hm_operating_case.py
 sample_data/hm_operating_case/*.csv
+# Kaggle originals must stay local, including the existing download folder.
+H&M판매량 파일/
+**/articles.csv
+**/articles.csv.zip
+**/customers.csv
+**/customers.csv.zip
+**/transactions_train.csv
+**/transactions_train.csv.zip
+**/sample_submission.csv
+**/sample_submission.csv.zip
+**/images.zip
 frontend/tsconfig.tsbuildinfo
 .vite/
 

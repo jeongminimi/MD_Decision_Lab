@@ -96,6 +96,7 @@ def datasets(db: Session = Depends(get_db)):
 @router.post("/datasets/upload")
 async def upload_dataset(
     name: str = Form(...), snapshot_date: date = Form(...), complete_calendar: bool = Form(False),
+    synthetic: bool = Form(False),
     products_file: UploadFile = File(...), sales_file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
@@ -169,9 +170,10 @@ async def upload_dataset(
         first, last = min(key[1] for key in sales), max(key[1] for key in sales)
         if snapshot_date != last and any(p["inputs"]["stock_on_hand"] is not None for p in products.values()):
             raise ValueError("현재고를 올릴 때 재고 기준일은 마지막 판매일과 같아야 합니다.")
-        dataset = WorkDataset(name=name.strip(), kind="company", start_date=first, end_date=last,
+        dataset = WorkDataset(name=name.strip(), kind="synthetic" if synthetic else "company", start_date=first, end_date=last,
                               complete_calendar=complete_calendar,
-                              source_note="자사 파일 업로드 · 판매는 관측값, 재고·가격·원가는 업로드 기준일 입력값")
+                              source_note=("가상 의류 자료 · 판매·재고·가격 모두 합성값" if synthetic else
+                                           "자사 파일 업로드 · 판매는 관측값, 재고·가격·원가는 업로드 기준일 입력값"))
         db.add(dataset)
         db.flush()
         ids = {}
@@ -186,10 +188,11 @@ async def upload_dataset(
             ids[sku] = product.id
             inputs = entry["inputs"]
             if any(value is not None for value in inputs.values()):
+                source = "synthetic_upload" if synthetic else "company_upload"
                 db.add(WorkProductInput(product_id=product.id, as_of_date=snapshot_date,
-                                        source_label="company_upload", **inputs))
+                                        source_label=source, **inputs))
                 db.add(WorkInputSnapshot(product_id=product.id, as_of_date=snapshot_date,
-                                         source_label="company_upload", **inputs))
+                                         source_label=source, **inputs))
         for (sku, day, channel), values in sales.items():
             db.add(WorkDailySale(product_id=ids[sku], sale_date=day, channel=channel, **values))
         db.commit()
@@ -205,7 +208,7 @@ async def append_company_sales(dataset_id: int, complete_calendar: bool = Form(F
                                sales_file: UploadFile = File(...), db: Session = Depends(get_db)):
     """Upsert dated sales without deleting unrelated rows, so post-action periods can arrive later."""
     dataset = _dataset(dataset_id, db)
-    if dataset.kind != "company":
+    if dataset.kind not in {"company", "synthetic"}:
         raise HTTPException(400, "H&M 원본 판매 기록은 수정할 수 없습니다.")
     try:
         rows = await _rows(sales_file)
@@ -361,9 +364,9 @@ def analysis(dataset_id: int, as_of: date | None = None, section: str | None = N
                 observed_any=product.id in sold_before)
         period_rows = [row for row in rows if day - timedelta(days=29) <= row.sale_date <= day]
         observed_revenue = sum(row.revenue or 0 for row in period_rows)
-        revenue_available = dataset.kind == "company" and bool(period_rows) and all(row.revenue is not None for row in period_rows)
+        revenue_available = dataset.kind in {"company", "synthetic"} and bool(period_rows) and all(row.revenue is not None for row in period_rows)
         observed_profit = sum(row.gross_profit or 0 for row in period_rows)
-        profit_available = dataset.kind == "company" and bool(period_rows) and all(row.gross_profit is not None for row in period_rows)
+        profit_available = dataset.kind in {"company", "synthetic"} and bool(period_rows) and all(row.gross_profit is not None for row in period_rows)
         items.append({"sku": product.sku, "name": product.name, "category": product.category,
                       "section": product.section, "image_ref": product.image_ref,
                       "lifecycle": product.lifecycle, "units_7d": u7, "units_14d": u14,
@@ -399,7 +402,7 @@ def analysis(dataset_id: int, as_of: date | None = None, section: str | None = N
 
 def _sell_through(dataset: WorkDataset, inp, rows: list[WorkDailySale], day: date) -> dict:
     """Measured only from company records: H&M stock is never entered as fact, and gaps in sales would hide units."""
-    if dataset.kind != "company":
+    if dataset.kind not in {"company", "synthetic"}:
         return {"status": "not_applicable", "pct": None, "source": None,
                 "reason": "H&M 원본에는 재고가 없어 실측 판매율을 계산하지 않습니다. 운영 시뮬레이션에서 가상 판매율을 확인하세요."}
     if inp is None or inp.opening_date is None:
@@ -410,7 +413,8 @@ def _sell_through(dataset: WorkDataset, inp, rows: list[WorkDailySale], day: dat
                 "reason": "기초재고일부터 기준일까지의 판매 기록이 모두 있다고 확인된 경우에만 계산합니다."}
     sold = _units(rows, inp.opening_date, day)
     result = sell_through(opening=inp.opening_stock, received=inp.received_units, sold=sold, closing=inp.stock_on_hand)
-    return {**result, "start": inp.opening_date, "end": day, "source": "자사 기록" if result["pct"] is not None else None}
+    label = "가상 기록" if dataset.kind == "synthetic" else "자사 기록"
+    return {**result, "start": inp.opening_date, "end": day, "source": label if result["pct"] is not None else None}
 
 
 class WorkInputPayload(BaseModel):
@@ -505,7 +509,9 @@ def _compare(payload: WorkComparePayload, db: Session) -> dict:
     feasible = check["feasible"]
     profit = round(payload.expected_units_30d * (price - inp.unit_cost_krw), 2) if feasible else None
     return {"sku": product.sku, "dataset_kind": dataset.kind, "as_of_date": payload.as_of_date,
-            "source": "H&M 관측 판매 + 사용자 시뮬레이션" if dataset.kind == "hm" else "자사 판매 + MD 입력 시나리오",
+            "source": ("H&M 관측 판매 + 사용자 시뮬레이션" if dataset.kind == "hm" else
+                       "가상 판매 + MD 입력 시나리오" if dataset.kind == "synthetic" else
+                       "자사 판매 + MD 입력 시나리오"),
             "discount_pct": payload.discount_pct, "expected_units_30d": payload.expected_units_30d,
             "purchase_units": payload.purchase_units, "purchase_arrival_date": purchase_arrival,
             "available_units": available, "stock_and_inbound_units": inp.stock_on_hand + inbound_counted,

@@ -10,7 +10,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export interface WorkDataset {
-  id: number; name: string; kind: "hm" | "company"; start_date: string; end_date: string;
+  id: number; name: string; kind: "hm" | "company" | "synthetic"; start_date: string; end_date: string;
   source_note: string; complete_calendar: boolean;
 }
 
@@ -79,10 +79,10 @@ export const workApi = {
     if (start) query.set("chart_start", start);
     return call<WorkAnalysis>(`/api/work/analysis?${query}`);
   },
-  upload: (name: string, snapshotDate: string, complete: boolean, products: File, sales: File) => {
+  upload: (name: string, snapshotDate: string, complete: boolean, products: File, sales: File, synthetic = false) => {
     const body = new FormData();
     body.set("name", name); body.set("snapshot_date", snapshotDate);
-    body.set("complete_calendar", String(complete));
+    body.set("complete_calendar", String(complete)); body.set("synthetic", String(synthetic));
     body.set("products_file", products); body.set("sales_file", sales);
     return call<{ id: number; product_count: number; daily_rows: number }>("/api/work/datasets/upload", { method: "POST", body });
   },

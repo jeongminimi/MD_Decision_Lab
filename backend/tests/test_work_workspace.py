@@ -2,6 +2,7 @@ import asyncio
 import io
 import unittest
 from datetime import date
+from pathlib import Path
 
 from fastapi import HTTPException, UploadFile
 from sqlalchemy import create_engine, delete, func, select
@@ -32,10 +33,34 @@ class WorkWorkspaceTests(unittest.TestCase):
 
     def upload(self, sales=SALES, products=PRODUCTS):
         return asyncio.run(upload_dataset(
-            name="My apparel", snapshot_date=date(2026, 9, 2), complete_calendar=True,
+            name="My apparel", snapshot_date=date(2026, 9, 2), complete_calendar=True, synthetic=False,
             products_file=UploadFile(filename="products.csv", file=io.BytesIO(products)),
             sales_file=UploadFile(filename="sales.csv", file=io.BytesIO(sales)), db=self.db,
         ))
+
+    def test_public_demo_imports_without_hm_files(self):
+        demo = Path(__file__).resolve().parents[2] / "sample_data" / "public_demo"
+        created = asyncio.run(upload_dataset(
+            name="가상 의류 공개 데모", snapshot_date=date(2026, 8, 31), complete_calendar=True, synthetic=True,
+            products_file=UploadFile(filename="products.csv", file=io.BytesIO((demo / "products.csv").read_bytes())),
+            sales_file=UploadFile(filename="sales.csv", file=io.BytesIO((demo / "sales.csv").read_bytes())),
+            db=self.db,
+        ))
+        self.assertEqual((created["product_count"], created["daily_rows"]), (30, 1800))
+        result = analysis(created["id"], date(2026, 8, 31), None, None, self.db)
+        self.assertEqual(result["dataset"]["kind"], "synthetic")
+        self.assertIn("가상", result["dataset"]["source_note"])
+        self.assertEqual(len(result["products"]), 30)
+        self.assertGreater(result["summary"]["attention_count"], 0)
+        product = next(row for row in result["products"] if row["sku"] == "FSH-EV-001")
+        self.assertEqual(product["reorderable"], False)
+        self.assertIsNotNone(product["sell_through"]["pct"])
+        self.assertEqual(product["sell_through"]["source"], "가상 기록")
+        compared = compare(WorkComparePayload(
+            dataset_id=created["id"], sku="FSH-EV-001", as_of_date=date(2026, 8, 31),
+            discount_pct=0, expected_units_30d=5, purchase_units=0,
+        ), self.db)
+        self.assertIn("가상 판매", compared["source"])
 
     def test_unknown_sale_sku_rejects_whole_upload(self):
         bad = SALES + b"MISSING,2026-09-02,1,10000,1000\n"

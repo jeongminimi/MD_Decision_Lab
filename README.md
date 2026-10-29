@@ -13,6 +13,10 @@
 - **회고와 추정 검증**: 8/31 판정 이후 실제로 어떻게 팔렸는지 판정 유형별로 보고, 8/31까지의 정보로 만든 9월 판매 추정을 실제 판매와 비교합니다.
 - **자사 파일 업로드**: 상품·판매 CSV/XLSX를 올려 같은 판단을 자기 데이터로 할 수 있습니다.
 
+### H&M 다운로드 없이 체험하기
+
+실행 후 `오늘의 할 일` → **상품·판매 파일 연결**에서 작업공간 이름을 `가상 의류 공개 데모`, 재고 기준일을 `2026-08-31`로 입력합니다. [상품 파일](sample_data/public_demo/products.csv)과 [판매 파일](sample_data/public_demo/sales.csv)을 올리고 **선택 기간의 모든 판매가 포함**, **가상 데이터로 표시**에 체크하세요. 30개 상품의 60일 판매·재고로 우선 확인 목록, 판매율, A/B 가정 비교를 시험할 수 있습니다. 이 두 파일은 전부 **합성 자료**이며 H&M 판매 기록이 아닙니다. 생성 방법은 [데모 생성 스크립트](sample_data/public_demo/build_demo.py)에 있습니다.
+
 ## 데이터 구조: 실제 판매 + 생성한 내부 자료
 
 MD 판단에는 판매·재고·발주·원가가 모두 필요하지만, 공개 자료(H&M Kaggle)에는 판매만 있습니다. 그래서 데이터를 네 층으로 나누고, 화면의 모든 숫자에 출처를 표시합니다.
@@ -83,7 +87,7 @@ python sample_data/hm_operating_case/verify_hm_operating_case.py
 
 ### 4. 자사 파일로 쓰기
 
-`오늘의 할 일`의 **자사 상품·판매 파일 연결**에서 두 파일을 올립니다. 열 형식은 `sample_data/company_products_template.csv`, `sample_data/company_sales_template.csv`를 참고하세요. 입고 예정일·기초재고 등 선택 열은 [WORKSPACE_DATA.md](docs/WORKSPACE_DATA.md)에 있습니다. 고객명·연락처 같은 개인정보 열은 지우고 올리세요.
+`오늘의 할 일`의 **상품·판매 파일 연결**에서 두 파일을 올립니다. 열 형식은 `sample_data/company_products_template.csv`, `sample_data/company_sales_template.csv`를 참고하세요. 입고 예정일·기초재고 등 선택 열은 [WORKSPACE_DATA.md](docs/WORKSPACE_DATA.md)에 있습니다. 고객명·연락처 같은 개인정보 열은 지우고 올리세요.
 
 ### 테스트
 

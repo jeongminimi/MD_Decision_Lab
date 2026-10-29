@@ -73,7 +73,7 @@ class WorkDataset(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(120))
-    kind: Mapped[str] = mapped_column(String(20))  # company or hm
+    kind: Mapped[str] = mapped_column(String(20))  # company, synthetic, or hm
     start_date: Mapped[date] = mapped_column(Date)
     end_date: Mapped[date] = mapped_column(Date)
     source_note: Mapped[str] = mapped_column(Text, default="")

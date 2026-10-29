@@ -1,6 +1,6 @@
 # 테스트 따라 하기 (Windows, 개발 경험 없이)
 
-준비에 30~40분, 테스트에 20분 정도 걸립니다. 처음 한 번만 준비하면 다음부터는 **3단계(실행)**부터 하면 됩니다.
+H&M 다운로드 없이 가상 의류 데이터로 먼저 시험할 수 있습니다. 프로그램을 설치한 뒤에는 **3단계(실행)**부터 시작하세요.
 
 ## 1단계. 프로그램 설치 (처음 한 번)
 
@@ -8,10 +8,18 @@
 2. **Node.js**: <https://nodejs.org/> 에서 **LTS** 버전을 받아 기본 설정으로 설치합니다.
 3. 설치가 끝나면 PC를 한 번 재시작합니다.
 4. **프로젝트 받기**: <https://github.com/jeongminimi/MD_Decision_Lab> → 초록색 **Code** 버튼 → **Download ZIP** → 받은 파일을 `C:\`에 압축 해제합니다. `C:\MD_Decision_Lab-main` 폴더가 생깁니다.
+5. PowerShell에서 필요한 파일을 설치합니다.
 
-## 2단계. H&M 데이터 준비 (처음 한 번)
+```powershell
+cd C:\MD_Decision_Lab-main\backend
+python -m pip install -r requirements.txt
+cd ..\frontend
+npm.cmd install
+```
 
-H&M 데이터는 Kaggle 대회 규칙상 이 저장소에 들어 있지 않아 직접 받아야 합니다.
+## 2단계. H&M 데이터 준비 (선택)
+
+가상 의류 데모만 시험한다면 이 단계를 건너뛰세요. H&M 사례까지 보려면 Kaggle 대회 규칙에 동의한 뒤 직접 받아야 합니다.
 
 1. <https://www.kaggle.com> 에 가입하고 로그인합니다.
 2. <https://www.kaggle.com/competitions/h-and-m-personalized-fashion-recommendations/data> 에서 대회 규칙에 동의합니다.
@@ -21,18 +29,14 @@ H&M 데이터는 Kaggle 대회 규칙상 이 저장소에 들어 있지 않아 �
 
 ```powershell
 cd C:\MD_Decision_Lab-main\backend
-python -m pip install -r requirements.txt
 python scripts/import_hm.py --articles "C:\hm-data\articles.csv.zip" --transactions "C:\hm-data\transactions_train.csv.zip" --images "C:\hm-data\images.zip"
 cd ..
 python sample_data/hm_operating_case/generate_hm_operating_case.py
 python sample_data/hm_operating_case/verify_hm_operating_case.py
-cd frontend
-npm.cmd install
 ```
 
 - `import_hm.py`는 거래 3천만 줄을 읽어 **5~10분** 걸립니다. 멈춘 것처럼 보여도 기다려 주세요. 끝나면 `완료: ... 상품 286종`이 나옵니다.
 - 검증 결과에 **`실패 0건`**이 나오면 데이터 준비가 끝난 것입니다.
-- `npm.cmd install`에서 노란색 `npm warn` 문구가 나와도 괜찮습니다.
 
 ## 3단계. 실행 (테스트할 때마다)
 
@@ -52,7 +56,9 @@ npm.cmd run dev
 ```
 `Local: http://localhost:5173/`이 보이면 브라우저(크롬 권장)에서 **<http://localhost:5173>** 을 엽니다.
 
-처음 열면 **"운영 시뮬레이션 자료 연결"** 버튼을 한 번 누릅니다. 이후에는 누르지 않아도 됩니다.
+가상 데모를 쓸 때는 `오늘의 할 일` → **상품·판매 파일 연결**에서 작업공간 이름 `가상 의류 공개 데모`, 재고 기준일 `2026-08-31`을 입력합니다. `sample_data\public_demo\products.csv`와 `sample_data\public_demo\sales.csv`를 선택하고 **선택 기간의 모든 판매가 포함**, **가상 데이터로 표시**에 체크한 뒤 연결하세요. 두 파일은 H&M 자료와 무관한 합성 데이터입니다.
+
+2단계에서 H&M 자료를 준비했다면 H&M 작업공간의 **운영 시뮬레이션 자료 연결** 버튼도 한 번 누릅니다.
 
 ## 4단계. 테스트 과제 (약 20분)
 
@@ -70,12 +76,12 @@ npm.cmd run dev
 
 **과제 3. 판단 기록하고 돌아보기**
 - 과제 2의 상품에서 "가능"으로 나오는 수량으로 비교한 뒤, 판단 이유를 쓰고 **판단 기록 저장**을 누릅니다. 재고 공백이 있는 안은 저장 버튼이 꺼져 있습니다.
-- 왼쪽 메뉴 `내 결정 기록`에서 저장한 기록과 그 아래 **"회고"** 줄(9월 실제 판매)을 봅니다.
-- `다음 시즌 기획`에서 **9월 판매 추정과 실제**, **8/31 판단 회고** 표를 봅니다.
+- 왼쪽 메뉴 `내 결정 기록`에서 저장한 선택과 이유를 확인합니다.
+- H&M 자료를 연결했다면 **회고**와 **다음 시즌 기획**의 9월 관측 비교도 확인합니다. 가상 의류 데모에는 이 H&M 회고가 없습니다.
 - 확인할 점: 판단을 돌아보는 데 도움이 됐나요? 어려운 표는 무엇이었나요?
 
 **알아둘 점**
-- 판매 수량만 H&M 실제 기록입니다. 재고·발주·가격·원가는 회사 내부 자료를 대신한 **가상 값**입니다.
+- 가상 의류 공개 데모는 판매·재고·가격까지 모두 합성 자료입니다. H&M 작업공간에서는 판매 수량만 H&M 관측 기록이고 재고·발주·가격·원가는 가상 값입니다.
 - 화면을 캡처해 다른 사람과 나눌 때는 오른쪽 위 **사진 표시/사진 숨김** 버튼으로 사진을 숨기세요. 상품 사진은 Kaggle 자료입니다.
 
 ## 5단계. 끝내기
@@ -94,6 +100,6 @@ PowerShell 창 두 개에서 각각 `Ctrl + C`를 누르거나 창을 닫습니�
 | "운영 시뮬레이션 자료 연결"이 실패함 | 2단계의 마지막 검증 명령을 다시 실행해 `실패 0건`인지 확인합니다 |
 | `import_hm.py`에서 "크기가 기록과 다릅니다" 경고 | 다른 시점에 받은 파일입니다. 실행은 되지만 숫자가 문서와 조금 다를 수 있습니다 |
 
-## H&M 데이터 없이 잠깐 보기
+## H&M 데이터 없이 보기
 
-`오늘의 할 일` → **자사 상품·판매 파일 연결**에서 `sample_data/company_products_template.csv`와 `sample_data/company_sales_template.csv`를 올리고 재고 기준일을 `2026-10-28`로 넣으면 업로드 기능을 볼 수 있습니다. 다만 예시 판매가 이틀치뿐이라 판정은 "판매 자료 확인"으로만 나옵니다.
+3단계의 `sample_data\public_demo\` 파일을 사용하세요. 상품 30종과 60일 판매 기록이 들어 있어 판단 기능까지 시험할 수 있습니다. 2행짜리 `company_*_template.csv`는 열 형식 참고용입니다.
