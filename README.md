@@ -129,9 +129,19 @@ npm.cmd run dev
 
 기본 API 주소는 `http://127.0.0.1:8000`이며 `VITE_API_BASE_URL`로 바꿀 수 있습니다.
 
-### 3. H&M 데이터 준비 (선택)
+### 3. H&M 데이터 직접 내려받기 (선택)
 
-H&M 데이터는 Kaggle 대회 규칙에 따라 이 저장소에 포함하지 않습니다. [Kaggle 대회 페이지](https://www.kaggle.com/competitions/h-and-m-personalized-fashion-recommendations)에서 규칙에 동의하고 파일을 받은 뒤, 저장소 밖에 두고 실행하세요.
+H&M 원본 데이터와 이미지는 이 저장소 및 공개 파일 저장소에 포함하지 않습니다. 시연에 사용하려면 각 사용자가 [H&M Personalized Fashion Recommendations 공식 Kaggle 페이지](https://www.kaggle.com/competitions/h-and-m-personalized-fashion-recommendations/data)에서 로그인하고 대회 규칙에 동의한 뒤 직접 내려받아야 합니다. 내려받은 파일은 저장소 밖의 개인 폴더에 보관하세요.
+
+| 파일 | 필요 여부 | 사용처 |
+|---|---|---|
+| `articles.csv.zip` | 필수 | 상품명·종류·섹션 등 상품 정보 |
+| `transactions_train.csv.zip` | 필수 | 일별 판매량, 동종 판매 비교, 다음 시즌 판매 흐름 |
+| `images.zip` | 선택 | 상품 카드 사진. 없어도 분석 기능은 작동 |
+| `customers.csv.zip` | 불필요 | 현재 프로그램은 고객 추천이나 개인정보를 사용하지 않음 |
+| `sample_submission.csv.zip` | 불필요 | Kaggle 제출용 파일로 현재 프로그램에서 사용하지 않음 |
+
+원본 파일을 GitHub, Supabase 공개 버킷 또는 배포 파일에 다시 올리지 마세요. 공개 시연이 필요하면 저장소에 포함된 **합성 의류 공개 데모**를 사용하고, H&M 자료는 규칙에 동의한 사용자의 로컬 분석 환경에서만 연결하세요.
 
 ```powershell
 # backend/ 에서: 여성복 3개 섹션의 7/1~8/31 판매 상위 상품만 적재 (고객 ID는 저장하지 않음)
