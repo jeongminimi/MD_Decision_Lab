@@ -99,7 +99,7 @@ export default function StrategyPlanner({ observedUnits, ready, canReorder, comp
     ? results[1].estimated_gross_profit_krw! - results[0].estimated_gross_profit_krw! : null;
 
   return <section className="strategy-planner" aria-label="판매 및 마케팅 전략 수립">
-    <header className="strategy-heading"><div><span className="strategy-eyebrow">판매 및 마케팅 전략</span><h3>이 상품을 어떻게 팔아볼까요?</h3><p>전략을 고르고 예상 판매량을 입력하면, 현재 운영과 이익·재고를 비교할 수 있습니다.</p></div><span className="strategy-badge">MD 판단 시뮬레이션</span></header>
+    <header className="strategy-heading"><div><span className="strategy-eyebrow">판매 및 마케팅 전략</span><h3>상품별 판매 전략 비교</h3><p>전략을 고르고 예상 판매량을 입력하면, 현재 운영과 이익·재고를 비교할 수 있습니다.</p></div><span className="strategy-badge">MD 판단 시뮬레이션</span></header>
 
     <div className="strategy-step"><div className="strategy-step-title"><span>1</span><div><b>검토할 행동 선택</b><small>할인, 기획전, 노출 또는 물량 확보</small></div></div>
       <div className="strategy-cards">{strategies.map((entry) => <button type="button" key={entry.id}

@@ -7,6 +7,8 @@ from . import models  # noqa: F401 — registers SQLAlchemy metadata
 from .api.routes import router
 from .api.work_routes import router as work_router
 from .api.hm_sim_routes import router as hm_sim_router
+from .api.catalog_routes import router as catalog_router
+from .api.peer_routes import router as peer_router
 from .database import Base, SessionLocal, engine, ensure_schema_compatibility
 from .services.seed import seed_demo_data
 
@@ -35,6 +37,8 @@ app.add_middleware(
 app.include_router(router)
 app.include_router(work_router)
 app.include_router(hm_sim_router)
+app.include_router(catalog_router)
+app.include_router(peer_router)
 
 
 @app.get("/")

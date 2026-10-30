@@ -40,6 +40,60 @@ export interface WorkAnalysis {
   summary: { total_products: number; attention_count: number; units_30d: number };
 }
 
+export interface CatalogProduct {
+  sku: string; name: string; category: string; section: string; image_ref: string | null;
+  units_14d: number | null; units_30d: number | null; sales_as_of_date: string | null;
+  stock_on_hand: number | null; stock_source: string; stock_as_of_date: string | null;
+  reviewable: boolean;
+}
+
+export interface PeerContext {
+  sku: string; scope: "apparel" | "accessory" | "other"; as_of_date: string;
+  section?: string; category?: string; note: string;
+  observed?: { units_7d: number; prior_7d: number; units_14d: number; prior_14d: number };
+  comparison?: { registered: number; active_14d: number; active_7d: number;
+    rank_14d: number | null; rank_7d: number | null; median_14d: number | null;
+    median_7d: number | null; enough_peers: boolean };
+  top_peers?: { sku: string; name: string; units_14d: number }[];
+  inventory?: { stock_on_hand: number; lead_time_days: number; reorderable: boolean;
+    inbound_before_lead: number; source: string } | null;
+  replenishment?: { daily_units: number; safety_days: number; target_units: number;
+    review_units: number | null; cover_days: number | null; note: string } | null;
+}
+
+export interface SeasonGroup { section: string; category: string; scope: "apparel" | "accessory"; products: number; units_14d: number }
+export interface SeasonReview {
+  as_of_date: string; section: string; category: string; scope: "apparel" | "accessory";
+  registered: number; note: string;
+  weekly: { week_index: number; start_2019: string; start_2020: string; units_2019: number; units_2020: number }[];
+  totals: { "2019": number; "2020": number; active_2019: number; active_2020: number };
+  candidates: { sku: string; name: string; units_2019: number; units_2020: number; units_14d: number }[];
+}
+export interface SeasonPlan { id: number; section: string; category: string; as_of_date: string;
+  candidates: { sku: string; planned_units: number }[]; planned_units: number;
+  rationale: string; created_at: string; sales_snapshot: SeasonReview }
+
+export const peerApi = {
+  context: (datasetId: number, sku: string) => call<PeerContext>(`/api/work/peers/${encodeURIComponent(sku)}?dataset_id=${datasetId}`),
+  groups: (datasetId: number) => call<SeasonGroup[]>(`/api/work/season-groups?dataset_id=${datasetId}`),
+  review: (datasetId: number, section: string, category: string, scope: "apparel" | "accessory") => {
+    const query = new URLSearchParams({ dataset_id: String(datasetId), section, category, scope });
+    return call<SeasonReview>(`/api/work/season-review?${query}`);
+  },
+  plans: (datasetId: number) => call<SeasonPlan[]>(`/api/work/season-plans?dataset_id=${datasetId}`),
+  savePlan: (body: { dataset_id: number; section: string; category: string; scope: "apparel" | "accessory";
+    candidates: { sku: string; planned_units: number }[]; rationale: string }) => call<{ id: number; planned_units: number }>(
+    "/api/work/season-plans", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
+};
+
+export interface CatalogResult {
+  dataset_id: number; total: number; page: number; page_size: number;
+  catalog_ready: boolean; items: CatalogProduct[];
+}
+
+export type CatalogSortBy = "name" | "category" | "section" | "units_30d" | "stock";
+export type CatalogSortDir = "asc" | "desc";
+
 export interface WorkComparison {
   sku: string; dataset_kind: string; source: string; discount_pct: number;
   expected_units_30d: number; purchase_units: number; purchase_arrival_date: string | null; available_units: number;
@@ -72,6 +126,12 @@ export interface WorkOption {
 
 export const workApi = {
   datasets: () => call<WorkDataset[]>("/api/work/datasets"),
+  catalog: (id: number, query: string, page: number, asOf: string, simulation: boolean,
+            sortBy: CatalogSortBy = "name", sortDir: CatalogSortDir = "asc") => {
+    const params = new URLSearchParams({ dataset_id: String(id), q: query, page: String(page),
+      as_of: asOf, simulation: String(simulation), sort_by: sortBy, sort_dir: sortDir });
+    return call<CatalogResult>(`/api/work/catalog?${params}`);
+  },
   analysis: (id: number, asOf?: string, section?: string, start?: string) => {
     const query = new URLSearchParams({ dataset_id: String(id) });
     if (asOf) query.set("as_of", asOf);

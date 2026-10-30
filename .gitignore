@@ -6,6 +6,7 @@ __pycache__/
 .pytest_cache/
 backend/test_tmp/
 backend/.test_tmp/
+backend/test_run_tmp/
 backend/.venv/
 .venv/
 env/
@@ -34,6 +35,8 @@ H&M판매량 파일/
 **/sample_submission.csv
 **/sample_submission.csv.zip
 **/images.zip
+*.parquet
+*.arrow
 frontend/tsconfig.tsbuildinfo
 .vite/
 

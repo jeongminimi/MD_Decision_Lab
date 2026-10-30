@@ -96,6 +96,75 @@ class WorkProduct(Base):
     lifecycle: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
 
+class WorkCatalogProduct(Base):
+    """Full source-file catalog; analytical samples remain in work_products."""
+
+    __tablename__ = "work_catalog_products"
+    __table_args__ = (UniqueConstraint("dataset_id", "sku", name="uq_work_catalog_dataset_sku"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    dataset_id: Mapped[int] = mapped_column(ForeignKey("work_datasets.id"), index=True)
+    sku: Mapped[str] = mapped_column(String(64), index=True)
+    name: Mapped[str] = mapped_column(String(180))
+    category: Mapped[str] = mapped_column(String(100), default="기타")
+    section: Mapped[str] = mapped_column(String(100), default="전체")
+    units_14d: Mapped[int] = mapped_column(Integer, default=0)
+    units_30d: Mapped[int] = mapped_column(Integer, default=0)
+    sales_as_of_date: Mapped[date] = mapped_column(Date)
+
+
+class WorkCatalogSalesSnapshot(Base):
+    """Observed H&M sales frozen at the MD decision date; no stock or prices."""
+
+    __tablename__ = "work_catalog_sales_snapshots"
+    __table_args__ = (UniqueConstraint("dataset_id", "sku", "as_of_date", name="uq_catalog_sales_snapshot"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    dataset_id: Mapped[int] = mapped_column(ForeignKey("work_datasets.id"), index=True)
+    sku: Mapped[str] = mapped_column(String(64), index=True)
+    as_of_date: Mapped[date] = mapped_column(Date)
+    scope: Mapped[str] = mapped_column(String(20))  # apparel, accessory, other
+    garment_group: Mapped[str] = mapped_column(String(80))
+    section: Mapped[str] = mapped_column(String(100), index=True)
+    category: Mapped[str] = mapped_column(String(100), index=True)
+    units_7d: Mapped[int] = mapped_column(Integer, default=0)
+    prior_7d: Mapped[int] = mapped_column(Integer, default=0)
+    units_14d: Mapped[int] = mapped_column(Integer, default=0)
+    prior_14d: Mapped[int] = mapped_column(Integer, default=0)
+    units_30d: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class WorkCatalogWeekSale(Base):
+    """Observed sales per article in aligned July/August weeks for 2019 and 2020."""
+
+    __tablename__ = "work_catalog_week_sales"
+    __table_args__ = (UniqueConstraint("dataset_id", "sku", "year", "week_index", name="uq_catalog_week_sale"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    dataset_id: Mapped[int] = mapped_column(ForeignKey("work_datasets.id"), index=True)
+    sku: Mapped[str] = mapped_column(String(64), index=True)
+    year: Mapped[int] = mapped_column(Integer)
+    week_index: Mapped[int] = mapped_column(Integer)
+    units: Mapped[int] = mapped_column(Integer)
+
+
+class WorkSeasonPlan(Base):
+    """MD's proposed products and quantity, separate from observed sales."""
+
+    __tablename__ = "work_season_plans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    dataset_id: Mapped[int] = mapped_column(ForeignKey("work_datasets.id"), index=True)
+    as_of_date: Mapped[date] = mapped_column(Date)
+    section: Mapped[str] = mapped_column(String(100))
+    category: Mapped[str] = mapped_column(String(100))
+    candidate_skus: Mapped[list] = mapped_column(JSON)
+    planned_units: Mapped[int] = mapped_column(Integer)
+    rationale: Mapped[str] = mapped_column(Text)
+    sales_snapshot: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class WorkDailySale(Base):
     __tablename__ = "work_daily_sales"
     __table_args__ = (UniqueConstraint("product_id", "sale_date", "channel", name="uq_work_product_day_channel"),)

@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowRight, Database, Info, TriangleAlert } from "lucide-react";
 import type { WorkView } from "./App";
 import { simApi, type SimAnalysis, type SimDecision, type SimForecast, type SimProduct, type SimProductDetail, type SimScenario } from "./workApi";
 import StrategyPlanner from "./StrategyPlanner";
+import PeerPanel from "./PeerPanel";
+import SeasonPlanner from "./SeasonPlanner";
 import "./hm-sim.css";
 
 const n = (value: number) => new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 1 }).format(value);
@@ -17,7 +19,16 @@ function Source({ kind }: { kind: "sales" | "conditions" | "results" }) {
   return <span className={`sim-source ${kind}`}>{label}</span>;
 }
 
-export default function HmSimulation({ datasetId, view, onNavigate }: { datasetId: number; view: WorkView; onNavigate: (view: WorkView) => void }) {
+function SimProductTable({ analysis, selectedSku, onOpen }: {
+  analysis: SimAnalysis; selectedSku: string; onOpen: (sku: string) => void;
+}) {
+  return <div className="table-scroll"><table className="data-table work-table"><thead><tr><th>상품</th><th>최근 14일 / 직전 <Source kind="sales"/></th><th>기준일 재고 <Source kind="conditions"/></th><th>판매율 7/1~8/31 <Source kind="results"/></th><th>판단 <Source kind="results"/></th><th>이후 관측 · 공급 부족분</th></tr></thead><tbody>{analysis.products.map((item) => <tr key={item.sku} className={selectedSku === item.sku ? "selected-row" : ""}><td><button type="button" className="work-table-product" onClick={() => onOpen(item.sku)}>{item.image_ref && <img className="work-product-image" src={item.image_ref} alt="" loading="lazy"/>}<span><b>{item.name}</b><small>{item.sku} · {item.conditions.lifecycle_label}</small></span></button></td><td>{n(item.observed.units_14d)}개 / {n(item.observed.prior_14d)}개</td><td>{n(item.conditions.stock_on_hand)}개<small>{item.signal.days_of_cover == null ? "소진일 계산 안 함" : `약 ${n(item.signal.days_of_cover)}일분`}</small></td><td>{item.sell_through.pct == null ? "—" : `${n(item.sell_through.pct)}%`}</td><td><span className={`work-risk ${item.signal.risk}`}>{riskLabels[item.signal.risk]}</span><small>{item.signal.action}</small></td><td>{n(item.post_as_of.observed_units)}개<small>{item.post_as_of.policy_shortfall_units ? `부족분 ${n(item.post_as_of.policy_shortfall_units)}개` : "부족분 없음"}</small></td></tr>)}</tbody></table></div>;
+}
+
+export default function HmSimulation({ datasetId, view, onNavigate, requestedSku, onRequestedSkuUsed }: {
+  datasetId: number; view: WorkView; onNavigate: (view: WorkView) => void;
+  requestedSku?: string | null; onRequestedSkuUsed?: () => void;
+}) {
   const [scenario, setScenario] = useState<SimScenario | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [analysis, setAnalysis] = useState<SimAnalysis | null>(null);
@@ -25,6 +36,14 @@ export default function HmSimulation({ datasetId, view, onNavigate }: { datasetI
   const [selectedSku, setSelectedSku] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const scrollToProduct = useRef(false);
+  useEffect(() => {
+    if (requestedSku) {
+      scrollToProduct.current = true;
+      setSelectedSku(requestedSku);
+      onRequestedSkuUsed?.();
+    }
+  }, [requestedSku]);
 
   async function load() {
     const items = await simApi.scenarios(datasetId);
@@ -44,7 +63,21 @@ export default function HmSimulation({ datasetId, view, onNavigate }: { datasetI
     catch (err) { setError(err instanceof Error ? err.message : "시뮬레이션 자료를 연결하지 못했습니다."); }
     finally { setBusy(false); }
   }
-  function openProduct(sku: string) { setSelectedSku(sku); onNavigate("products"); requestAnimationFrame(() => requestAnimationFrame(() => document.getElementById("sim-product-detail")?.scrollIntoView({ behavior: "smooth" }))); }
+  useLayoutEffect(() => {
+    if (view === "overview" && scrollToProduct.current) {
+      const target = document.getElementById("sim-product-detail");
+      if (target) { scrollToProduct.current = false; target.scrollIntoView({ behavior: "instant", block: "start" }); }
+    }
+  }, [view, selectedSku, analysis]);
+  function openProduct(sku: string) {
+    scrollToProduct.current = true;
+    setSelectedSku(sku);
+    if (view !== "overview") onNavigate("overview");
+    else if (selectedSku === sku) {
+      scrollToProduct.current = false;
+      document.getElementById("sim-product-detail")?.scrollIntoView({ behavior: "instant", block: "start" });
+    }
+  }
 
   if (error) return <div className="error-banner"><TriangleAlert size={17}/>{error}</div>;
   if (!loaded) return <p className="work-empty">시뮬레이션을 불러오는 중…</p>;
@@ -60,16 +93,18 @@ export default function HmSimulation({ datasetId, view, onNavigate }: { datasetI
 
     {view === "overview" && <>
       <section className="work-summary" aria-label="기준일 핵심 지표"><div><small>기준일 30일 판매 <Source kind="sales"/></small><strong>{n(analysis.summary.units_30d)}개</strong></div><div><small>우선 확인 <Source kind="results"/></small><strong>{analysis.summary.attention_count}개</strong></div><div><small>판매 미관측</small><strong>{unobserved.length}개</strong></div><div><small>시뮬레이션 상품</small><strong>{analysis.summary.total_products}종</strong></div></section>
-      <section className="panel work-panel"><div className="work-panel-heading"><div><span className="section-kicker">AS OF {analysis.as_of_date}</span><h2>기준일에 확인할 상품</h2><small>8월 31일까지의 관측 판매와 가상 재고로 계산했습니다. 9월 판매는 사용하지 않았습니다.</small></div><button type="button" className="button button-secondary" onClick={() => onNavigate("products")}>전체 {analysis.products.length}종 <ArrowRight size={16}/></button></div>
+      <section className="panel work-panel"><div className="work-panel-heading"><div><span className="section-kicker">AS OF {analysis.as_of_date}</span><h2>기준일에 확인할 상품</h2><small>8월 31일까지의 관측 판매와 가상 재고로 계산했습니다. 9월 판매는 사용하지 않았습니다.</small></div><button type="button" className="button button-secondary" onClick={() => { const list = document.getElementById("sim-analysis-list") as HTMLDetailsElement | null; if (list) { list.open = true; list.scrollIntoView({ behavior: "instant", block: "start" }); } }}>분석 상품 {analysis.products.length}종 <ArrowRight size={16}/></button></div>
         <div className="work-priority-list">{[...attention, ...unobserved].slice(0, 12).map((item) => <button type="button" key={item.sku} onClick={() => openProduct(item.sku)}>{item.image_ref && <img className="work-product-image" src={item.image_ref} alt="" loading="lazy"/>}<span className={`work-risk ${item.signal.risk}`}>{riskLabels[item.signal.risk]}</span><span className="work-priority-main"><b>{item.name}</b><small>{item.signal.reason}</small></span><span className="work-action">{item.signal.action}<ArrowRight size={15}/></span></button>)}</div>
       </section>
+      <details className="panel work-panel catalog-analysis-list" id="sim-analysis-list"><summary>분석 상품 {analysis.products.length}종 모두 보기</summary><SimProductTable analysis={analysis} selectedSku={selectedSku} onOpen={openProduct}/></details>
+      {selectedSku && focus && <div className="work-detail-target" id="sim-product-detail"><SimProductPanel key={`${scenario.id}-${focus.sku}`} scenario={scenario} sku={focus.sku} onSaved={async () => setDecisions(await simApi.decisions(scenario.id))}/></div>}
     </>}
 
     {view === "products" && <>
       <section className="panel work-panel"><div className="work-panel-heading"><div><h2>시뮬레이션 {analysis.products.length}종 · {analysis.as_of_date} 기준</h2><small>판매는 H&M 관측, 재고는 가상 운영 조건, 판단은 시뮬레이션입니다.</small></div></div>
-        <div className="table-scroll"><table className="data-table work-table"><thead><tr><th>상품</th><th>최근 14일 / 직전 <Source kind="sales"/></th><th>기준일 재고 <Source kind="conditions"/></th><th>판매율 7/1~8/31 <Source kind="results"/></th><th>판단 <Source kind="results"/></th><th>이후 관측 · 공급 부족분</th></tr></thead><tbody>{analysis.products.map((item) => <tr key={item.sku} className={focus?.sku === item.sku ? "selected-row" : ""}><td><button type="button" className="work-table-product" onClick={() => setSelectedSku(item.sku)}>{item.image_ref && <img className="work-product-image" src={item.image_ref} alt="" loading="lazy"/>}<span><b>{item.name}</b><small>{item.sku} · {item.conditions.lifecycle_label}</small></span></button></td><td>{n(item.observed.units_14d)}개 / {n(item.observed.prior_14d)}개</td><td>{n(item.conditions.stock_on_hand)}개<small>{item.signal.days_of_cover == null ? "소진일 계산 안 함" : `약 ${n(item.signal.days_of_cover)}일분`}</small></td><td>{item.sell_through.pct == null ? "—" : `${n(item.sell_through.pct)}%`}</td><td><span className={`work-risk ${item.signal.risk}`}>{riskLabels[item.signal.risk]}</span><small>{item.signal.action}</small></td><td>{n(item.post_as_of.observed_units)}개<small>{item.post_as_of.policy_shortfall_units ? `부족분 ${n(item.post_as_of.policy_shortfall_units)}개` : "부족분 없음"}</small></td></tr>)}</tbody></table></div>
+        <SimProductTable analysis={analysis} selectedSku={selectedSku} onOpen={openProduct}/>
       </section>
-      {focus && <SimProductPanel key={`${scenario.id}-${focus.sku}`} scenario={scenario} sku={focus.sku} onSaved={async () => setDecisions(await simApi.decisions(scenario.id))}/>}
+      {focus && <div className="work-detail-target" id="sim-product-detail"><SimProductPanel key={`${scenario.id}-${focus.sku}`} scenario={scenario} sku={focus.sku} onSaved={async () => setDecisions(await simApi.decisions(scenario.id))}/></div>}
     </>}
 
     {view === "actions" && <section className="panel work-panel"><div className="work-panel-heading"><div><h2>시뮬레이션 판단 기록</h2><small>저장 당시의 관측 판매·가상 조건·계산 결과를 그대로 보관합니다. 이후 자료가 바뀌어도 기록은 바뀌지 않습니다.</small></div></div>
@@ -82,7 +117,7 @@ export default function HmSimulation({ datasetId, view, onNavigate }: { datasetI
       </article>)}</div> : <p className="work-empty">저장한 판단이 없습니다. 상품을 열어 판매 전략을 계산한 뒤 이유를 남겨 보세요.</p>}
     </section>}
 
-    {view === "planning" && <><ForecastCheck scenarioId={scenario.id} onOpen={openProduct}/><Retrospective analysis={analysis}/><PostSummary analysis={analysis} onOpen={openProduct}/></>}
+    {view === "planning" && <><SeasonPlanner datasetId={scenario.dataset_id}/><ForecastCheck scenarioId={scenario.id} onOpen={openProduct}/><Retrospective analysis={analysis}/><PostSummary analysis={analysis} onOpen={openProduct}/></>}
   </div>;
 }
 
@@ -155,13 +190,14 @@ function SimProductPanel({ scenario, sku, onSaved }: { scenario: SimScenario; sk
 
   const c = item.conditions;
 
-  return <section className="panel work-panel work-detail" id="sim-product-detail">
+  return <section className="panel work-panel work-detail">
     <div className="work-panel-heading"><div><span className="section-kicker">SIMULATION · {item.sku} · 기준일 {scenario.as_of_date}</span><h2>{item.name}</h2><small>{item.section} · {item.category} · {c.lifecycle_label}{c.scenario_lifecycle !== "unassigned" ? "" : ""}</small></div><span className="work-detail-identity">{item.image_ref && <img className="work-product-image large" src={item.image_ref} alt={`${item.name} 상품 사진`} loading="lazy"/>}<span className={`work-risk ${item.signal.risk}`}>{riskLabels[item.signal.risk]}</span></span></div>
     <div className="sim-columns">
       <div><h3>판매 <Source kind="sales"/></h3><dl><dt>최근 7일</dt><dd>{n(item.observed.units_7d)}개</dd><dt>최근 14일 / 직전 14일</dt><dd>{n(item.observed.units_14d)} / {n(item.observed.prior_14d)}개</dd><dt>최근 30일 / 직전 30일</dt><dd>{n(item.observed.units_30d)} / {n(item.observed.prior_30d)}개</dd><dt>처음 관측된 판매일</dt><dd>{item.observed.first_sale_date || "기준일까지 없음"}</dd></dl></div>
       <div><h3>기준일 조건 <Source kind="conditions"/></h3><dl><dt>기준일 재고</dt><dd>{n(c.stock_on_hand)}개</dd><dt>기준일 이후 계획 입고</dt><dd>{n(c.planned_inbound_after_as_of)}개 (30일 내 {n(c.planned_inbound_30d)}개)</dd><dt>리드타임</dt><dd>{c.lead_time_days}일</dd><dt>재발주</dt><dd>{c.reorderable ? "가능" : `불가 (설정일 ${c.reorder_stop_date})`}</dd><dt>정가 / 판매가 / 원가</dt><dd>{won(c.list_price_krw)} / {won(c.selling_price_krw)} / {won(c.unit_cost_krw)}</dd></dl></div>
       <div><h3>판단 <Source kind="results"/></h3><dl><dt>소진 예상일</dt><dd>{item.signal.days_of_cover == null ? "판매 속도 없음 · 계산 안 함" : `약 ${n(item.signal.days_of_cover)}일`}</dd><dt>근거</dt><dd>{item.signal.reason}</dd><dt>다음 검토</dt><dd>{item.signal.action}</dd><dt>{item.sell_through.label}</dt><dd>{item.sell_through.pct == null ? item.sell_through.reason : `${n(item.sell_through.pct)}%`}<small>{item.sell_through.start} ~ {item.sell_through.end} · 공급 {n(item.sell_through.sold_units ?? 0)} ÷ (기초 {n(item.sell_through.opening_stock ?? 0)} + 입고 {n(item.sell_through.received_units ?? 0)})</small></dd><dt>기준일 30일 시뮬레이션 매출총이익</dt><dd>{won(item.signal.simulated_gross_profit_30d_krw)}</dd></dl></div>
     </div>
+    <PeerPanel datasetId={scenario.dataset_id} sku={item.sku}/>
     <StrategyPlanner
       key={sku}
       observedUnits={item.observed.units_30d}

@@ -1,14 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { ArrowRight, Check, Database, FileUp, Info, RefreshCw, TriangleAlert } from "lucide-react";
 import type { WorkView } from "./App";
 import { workApi, type WorkAnalysis, type WorkDataset, type WorkDecision, type WorkInputs, type WorkProduct } from "./workApi";
 import HmSimulation from "./HmSimulation";
+import CatalogPage from "./CatalogPage";
 import StrategyPlanner from "./StrategyPlanner";
 import "./work.css";
 
 const n = (value: number) => new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 1 }).format(value);
 const won = (value: number) => value < 0 ? `-₩${n(Math.abs(value))}` : `₩${n(value)}`;
 const nextDay = (day: string) => { const next = new Date(`${day}T00:00:00Z`); next.setUTCDate(next.getUTCDate() + 1); return next.toISOString().slice(0, 10); };
+const HM_DECISION_DATE = "2020-08-31";
 const riskLabels: Record<string, string> = {
   stockout: "재고 확인", stock_risk: "소진 위험", overstock: "재고 과다",
   declining: "판매 감소", rising: "판매 증가", data_gap: "자료 확인", not_observed: "판매 미관측", stable: "정상",
@@ -46,9 +49,11 @@ export default function WorkPage({ view, onNavigate }: { view: WorkView; onNavig
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const [hmMode, setHmMode] = useState<"observed" | "simulation">("simulation");
+  const [observedExpanded, setObservedExpanded] = useState(false);
+  const [requestedSimSku, setRequestedSimSku] = useState<string | null>(null);
+  const scrollToProduct = useRef(false);
   const dataset = datasets.find((item) => item.id === datasetId);
-  const simActive = dataset?.kind === "hm" && hmMode === "simulation";
+  const simActive = dataset?.kind === "hm";
 
   useEffect(() => {
     void workApi.datasets().then((items) => {
@@ -61,7 +66,7 @@ export default function WorkPage({ view, onNavigate }: { view: WorkView; onNavig
     if (id == null) return;
     const [result, saved] = await Promise.all([workApi.analysis(id, day, chosenSection, start), workApi.decisions(id)]);
     setAnalysis(result); setDecisions(saved);
-    if (!result.products.some((product) => product.sku === selectedSku)) setSelectedSku(result.products[0]?.sku || "");
+    setSelectedSku((current) => current && !result.products.some((product) => product.sku === current) ? "" : current);
   }
   useEffect(() => { void refresh().catch((err) => setError(err instanceof Error ? err.message : "분석을 불러오지 못했습니다.")); }, [datasetId, asOf, section, chartStart]);
 
@@ -74,8 +79,30 @@ export default function WorkPage({ view, onNavigate }: { view: WorkView; onNavig
 
   const attention = analysis?.products.filter((item) => item.risk !== "stable" && item.risk !== "data_gap") || [];
   const visible = useMemo(() => analysis?.products.filter((item) => `${item.sku} ${item.name} ${item.category}`.toLowerCase().includes(query.toLowerCase())) || [], [analysis, query]);
-  const focus = analysis?.products.find((item) => item.sku === selectedSku) || analysis?.products[0];
-  function openProduct(sku: string) { setSelectedSku(sku); onNavigate("products"); requestAnimationFrame(() => requestAnimationFrame(() => document.getElementById("work-product-detail")?.scrollIntoView({ behavior: "smooth" }))); }
+  const focus = analysis?.products.find((item) => item.sku === selectedSku);
+  useLayoutEffect(() => {
+    if ((!simActive || observedExpanded) && view === "overview" && scrollToProduct.current) {
+      const target = document.getElementById("work-product-detail");
+      if (target) { scrollToProduct.current = false; target.scrollIntoView({ behavior: "instant", block: "start" }); }
+    }
+  }, [simActive, observedExpanded, view, selectedSku, analysis]);
+  function openProduct(sku: string) {
+    if (simActive) setObservedExpanded(true);
+    scrollToProduct.current = true;
+    setSelectedSku(sku);
+    if (view !== "overview") onNavigate("overview");
+    else if (selectedSku === sku) {
+      scrollToProduct.current = false;
+      document.getElementById("work-product-detail")?.scrollIntoView({ behavior: "instant", block: "start" });
+    }
+  }
+  function reviewFromCatalog(sku: string) {
+    if (simActive) { setRequestedSimSku(sku); onNavigate("overview"); }
+    else {
+      if (section && !analysis?.products.some((item) => item.sku === sku)) setSection("");
+      openProduct(sku);
+    }
+  }
 
   return <div className="work-page">
     <header className="work-header"><div><span className="section-kicker">MD DECISION LAB</span><h1>{view === "overview" ? "오늘의 할 일" : view === "products" ? "전체 상품" : view === "actions" ? "내 결정 기록" : "다음 시즌 기획"}</h1></div>
@@ -83,17 +110,16 @@ export default function WorkPage({ view, onNavigate }: { view: WorkView; onNavig
     </header>
     {error && <div className="error-banner"><TriangleAlert size={17}/>{error}</div>}
     {notice && <div className="notice-banner"><Check size={16}/>{notice}</div>}
-    {dataset?.kind === "hm" && <section className="sim-mode" aria-label="H&M 보기 방식"><button type="button" className={hmMode === "simulation" ? "active" : ""} aria-pressed={hmMode === "simulation"} onClick={() => setHmMode("simulation")}>운영 시뮬레이션 보기</button><button type="button" className={hmMode === "observed" ? "active" : ""} aria-pressed={hmMode === "observed"} onClick={() => setHmMode("observed")}>실제 판매만 보기</button><small>{hmMode === "observed" ? "H&M 판매 기록만 표시" : "판매: H&M 관측 · 재고·원가: 가상"}</small></section>}
-    {dataset?.kind === "hm" && !simActive && <details className="work-source-details"><summary><Info size={15}/> 데이터 범위</summary><p>{HM_SAMPLE_BIAS}</p></details>}
-    {simActive && datasetId != null && <HmSimulation datasetId={datasetId} view={view} onNavigate={onNavigate}/>}
-    {!simActive && <>
-    {dataset && <section className="work-filters" aria-label="분석 범위">
+    {view === "products" && dataset && <CatalogPage dataset={dataset} asOf={simActive ? HM_DECISION_DATE : asOf} simulation={simActive} onReview={reviewFromCatalog}/>}
+    {simActive && datasetId != null && view !== "products" && <HmSimulation datasetId={datasetId} view={view} onNavigate={onNavigate} requestedSku={requestedSimSku} onRequestedSkuUsed={() => setRequestedSimSku(null)}/>}
+    {(!simActive || view !== "products") && <OptionalObservedDetails enabled={simActive} expanded={observedExpanded} onExpandedChange={setObservedExpanded}>
+    {dataset && view !== "products" && <section className="work-filters" aria-label="분석 범위">
       <label>의류 섹션<select value={section} onChange={(event) => { setSection(event.target.value); setSelectedSku(""); }}><option value="">전체 섹션</option>{analysis?.sections.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
       <label>그래프 시작일<input type="date" min={dataset.start_date} max={asOf} value={chartStart} onChange={(event) => setChartStart(event.target.value)}/></label>
       <label>분석 기준일<input type="date" min={dataset.start_date} max={dataset.end_date} value={asOf} onChange={(event) => { setAsOf(event.target.value); setSelectedSku(""); }}/></label>
       <button type="button" className="button button-secondary" onClick={() => void refresh()}><RefreshCw size={15}/> 새로고침</button>
     </section>}
-    {dataset && <details className="work-source-details"><summary><Info size={15}/> 데이터 출처</summary><p>{dataset.source_note}</p></details>}
+    {dataset && view !== "products" && <details className="work-source-details"><summary><Info size={15}/> 데이터 출처</summary><p>{dataset.source_note}</p></details>}
     {view === "overview" && <>
       {analysis && <>
         <section className="work-summary" aria-label="핵심 지표"><div><small>최근 30일 판매</small><strong>{n(analysis.summary.units_30d)}개</strong></div><div><small>우선 확인</small><strong>{n(analysis.summary.attention_count)}개</strong></div><div><small>분석 상품</small><strong>{n(analysis.summary.total_products)}종</strong></div></section>
@@ -102,25 +128,45 @@ export default function WorkPage({ view, onNavigate }: { view: WorkView; onNavig
           {!analysis.products.length && <p className="work-empty">이 범위에 분석할 상품이 없습니다.</p>}
         </section>
         <section className="panel work-panel"><div className="work-panel-heading"><div><span className="section-kicker">SALES TREND</span><h2>기간별 판매량</h2></div><small>관측된 판매 수량 · 7일 단위</small></div><WeeklyChart data={analysis.daily_chart}/></section></div>
+        <details className="panel work-panel catalog-analysis-list"><summary>분석 상품 {n(analysis.products.length)}종 모두 보기</summary>
+          <input className="work-search" aria-label="분석 상품 검색" placeholder="상품명 또는 SKU 검색" value={query} onChange={(event) => setQuery(event.target.value)}/>
+          <div className="table-scroll"><table className="data-table work-table"><thead><tr><th>상품</th><th>최근 14일 / 직전</th><th><abbr title="현재 재고를 최근 판매 속도로 나눈 예상 일수. 재고를 입력한 경우에만 표시합니다.">재고 / 소진 예상일</abbr></th><th>다음 검토</th></tr></thead><tbody>{visible.map((item) => <tr key={item.sku} className={focus?.sku === item.sku ? "selected-row" : ""}><td><button type="button" className="work-table-product" onClick={() => openProduct(item.sku)}>{item.image_ref && <img className="work-product-image" src={item.image_ref} alt="" loading="lazy"/>}<span><b>{item.name}</b><small>{item.sku} · {item.category}</small></span></button></td><td>{n(item.units_14d)}개 / {n(item.prior_14d)}개<div className="work-mini-bar"><span style={{ width: `${Math.min(100, item.units_14d / Math.max(1, item.prior_14d, item.units_14d) * 100)}%` }}/></div></td><td>{item.stock_on_hand == null ? "재고 입력 필요" : `${n(item.stock_on_hand)}개`}<small>{item.days_of_cover == null ? "소진일 계산 전" : `약 ${n(item.days_of_cover)}일`}</small></td><td><span className={`work-risk ${item.risk}`}>{riskLabels[item.risk] || item.risk}</span><small>{item.action}</small></td></tr>)}</tbody></table></div>
+        </details>
+        {focus && datasetId != null && <div className="work-detail-target" id="work-product-detail"><ProductDetail key={`${datasetId}-${focus.sku}-${asOf}`} item={focus} dataset={dataset!} asOf={asOf} onChanged={() => refresh()}/></div>}
       </>}
       <UploadPanel onUploaded={async (id) => { const items = await workApi.datasets(); setDatasets(items); changeDatasetFromUpload(id, items); }} busy={busy} setBusy={setBusy} setError={setError} setNotice={setNotice}/>
     </>}
-    {view === "products" && analysis && <>
-      <section className="panel work-panel"><div className="work-panel-heading"><div><h2>상품별 판매·재고</h2><small>판매 수치는 관측값, 재고·원가는 입력한 기준일의 값입니다.</small></div><input className="work-search" aria-label="상품 검색" placeholder="상품명 또는 SKU 검색" value={query} onChange={(event) => setQuery(event.target.value)}/></div>
-        <div className="table-scroll"><table className="data-table work-table"><thead><tr><th>상품</th><th>최근 14일 / 직전</th><th><abbr title="현재 재고를 최근 판매 속도로 나눈 예상 일수. 재고를 입력한 경우에만 표시합니다.">재고 / 소진 예상일</abbr></th><th>다음 검토</th></tr></thead><tbody>{visible.map((item) => <tr key={item.sku} className={focus?.sku === item.sku ? "selected-row" : ""}><td><button type="button" className="work-table-product" onClick={() => setSelectedSku(item.sku)}>{item.image_ref && <img className="work-product-image" src={item.image_ref} alt="" loading="lazy"/>}<span><b>{item.name}</b><small>{item.sku} · {item.category}</small></span></button></td><td>{n(item.units_14d)}개 / {n(item.prior_14d)}개<div className="work-mini-bar"><span style={{ width: `${Math.min(100, item.units_14d / Math.max(1, item.prior_14d, item.units_14d) * 100)}%` }}/></div></td><td>{item.stock_on_hand == null ? "재고 입력 필요" : `${n(item.stock_on_hand)}개`}<small>{item.days_of_cover == null ? "소진일 계산 전" : `약 ${n(item.days_of_cover)}일`}</small></td><td><span className={`work-risk ${item.risk}`}>{riskLabels[item.risk] || item.risk}</span><small>{item.action}</small></td></tr>)}</tbody></table></div>
-      </section>
-      {focus && datasetId != null && <ProductDetail key={`${datasetId}-${focus.sku}-${asOf}`} item={focus} dataset={dataset!} asOf={asOf} onChanged={() => refresh()}/>}
-    </>}
     {view === "actions" && dataset && <>{dataset.kind === "company" && <SalesUpdatePanel datasetId={dataset.id} onUploaded={async (date) => { setDatasets(await workApi.datasets()); setAsOf(date); }}/>}<section className="panel work-panel"><div className="work-panel-heading"><div><h2>내 결정 기록</h2><small>저장한 검토와 실제 실행을 구분합니다.</small></div></div>{decisions.length ? <div className="work-decision-list">{decisions.map((item) => <DecisionRow key={item.id} item={item} dataset={dataset} onChanged={() => refresh()}/>)}</div> : <p className="work-empty">저장한 판단이 없습니다. 상품에서 판매 전략을 계산하고 이유를 남겨보세요.</p>}</section></>}
     {view === "planning" && analysis && <PlanningPanel products={analysis.products} dataset={dataset!} onOpen={openProduct}/>}
-    </>}
+    </OptionalObservedDetails>}
     {!dataset && <section className="panel work-panel"><h2>작업공간 연결</h2><p>자사 상품·판매 파일을 올리거나 H&M 시연 데이터가 연결되면 분석을 시작할 수 있습니다.</p><UploadPanel onUploaded={async (id) => { const items = await workApi.datasets(); setDatasets(items); changeDatasetFromUpload(id, items); }} busy={busy} setBusy={setBusy} setError={setError} setNotice={setNotice}/></section>}
+    {dataset && <WorkPurposeFooter isHm={simActive}/>}
   </div>;
 
   function changeDatasetFromUpload(id: number, items: WorkDataset[]) {
     const next = items.find((item) => item.id === id);
     if (next) { setAnalysis(null); setSection(""); setChartStart(""); setSelectedSku(""); setDatasetId(id); setAsOf(next.end_date); }
   }
+}
+
+function OptionalObservedDetails({ enabled, expanded, onExpandedChange, children }: { enabled: boolean; expanded: boolean; onExpandedChange: (value: boolean) => void; children: ReactNode }) {
+  if (!enabled) return <>{children}</>;
+  return <details className="panel work-panel work-observed-extra" open={expanded} onToggle={(event) => { if (event.target === event.currentTarget) onExpandedChange(event.currentTarget.open); }}><summary>판매 원본 분석·직접 입력·기존 기록</summary><p>H&M 판매 원본으로 따로 살펴보거나 입력한 조건을 확인할 때 사용합니다. 위의 가상 운영 조건은 바뀌지 않습니다.</p>{children}</details>;
+}
+
+function WorkPurposeFooter({ isHm }: { isHm: boolean }) {
+  return <section className="work-purpose-footer" aria-label="기능과 데이터 안내">
+    <h2>기능별 확인 내용</h2>
+    <ul>
+      <li><b>오늘의 할 일</b><span>판매 변화와 재고 위험을 함께 보고 먼저 검토할 상품을 정합니다.</span></li>
+      <li><b>전체 상품</b><span>상품을 검색하고 최근 판매량과 재고 정보 유무를 확인합니다.</span></li>
+      <li><b>판매 전략 비교</b><span>할인·노출·매입안의 예상 판매량, 매출총이익, 잔여 재고를 비교합니다.</span></li>
+      <li><b>내 결정 기록</b><span>선택 이유와 당시 수치를 남기고 이후 판매 흐름을 돌아봅니다.</span></li>
+      <li><b>다음 시즌 기획</b><span>과거 판매 흐름과 추정 오차를 보고 준비 물량을 검토합니다.</span></li>
+      <li><b>자사 파일 연결</b><span>상품·판매 자료를 올려 같은 기준으로 자사 상품을 분석합니다.</span></li>
+    </ul>
+    {isHm && <p className="work-purpose-source"><b>자료 기준</b> 판매 수량과 상품 정보는 H&amp;M 공개 기록입니다. 재고·발주·원화 가격·원가는 원본에 없어 기준일 전 판매 속도, 상품 종류, 가정한 리드타임·발주 규칙으로 만든 시연 값입니다. 이를 결합한 재고 위험과 매출총이익은 시뮬레이션 결과이며 실제 H&amp;M의 재고·이익·전략 효과가 아닙니다. {HM_SAMPLE_BIAS}</p>}
+  </section>;
 }
 
 function SalesUpdatePanel({ datasetId, onUploaded }: { datasetId: number; onUploaded: (date: string) => Promise<void> }) {
@@ -157,7 +203,7 @@ function ProductDetail({ item, dataset, asOf, onChanged }: { item: WorkProduct; 
     finally { setBusy(false); }
   }
   const comparisonReady = item.stock_on_hand != null && item.inbound_units != null && item.unit_price_krw != null && item.unit_cost_krw != null;
-  return <section className="panel work-panel work-detail" id="work-product-detail"><div className="work-panel-heading"><div><span className="section-kicker">PRODUCT REVIEW · {item.sku}</span><h2>{item.name}</h2><small>{item.section} · {item.category}</small></div><span className="work-detail-identity">{item.image_ref && <img className="work-product-image large" src={item.image_ref} alt={`${item.name} 상품 사진`} loading="lazy"/>}<span className={`work-risk ${item.risk}`}>{riskLabels[item.risk] || item.risk}</span></span></div>
+  return <section className="panel work-panel work-detail"><div className="work-panel-heading"><div><span className="section-kicker">PRODUCT REVIEW · {item.sku}</span><h2>{item.name}</h2><small>{item.section} · {item.category}</small></div><span className="work-detail-identity">{item.image_ref && <img className="work-product-image large" src={item.image_ref} alt={`${item.name} 상품 사진`} loading="lazy"/>}<span className={`work-risk ${item.risk}`}>{riskLabels[item.risk] || item.risk}</span></span></div>
     <div className="work-observation"><span className="work-provenance observed">{dataset.kind === "hm" ? "H&M 실제 판매 기록" : dataset.kind === "synthetic" ? "가상 판매 기록" : "자사 판매 기록"}</span><b>{item.reason}</b><small>최근 7일 {n(item.units_7d)}개 · 30일 {n(item.units_30d)}개 · 전기 30일 {n(item.prior_30d)}개</small><small>채널별 30일: {Object.entries(item.channel_units_30d).map(([channel, units]) => `${channel} ${n(units)}개`).join(" · ") || "기록 없음"}{dataset.kind === "hm" ? " · 채널 번호의 온·오프라인 의미는 확인 전" : ""}</small><strong>다음 검토: {item.action}</strong></div>
     <div className="work-metrics"><div><small><abbr title="최근 14일 판매 수량을 14로 나눈 값으로 재고를 나눕니다. 판매 기간이 짧으면 관측된 일수로 나눕니다.">재고 소진 예상일</abbr></small><b>{item.days_of_cover == null ? "재고 입력 후 계산" : `약 ${n(item.days_of_cover)}일`}</b></div><div><small><abbr title="매출에서 상품 매입원가만 뺀 값입니다. 배송비·광고비 등은 제외합니다.">30일 매출총이익</abbr></small><b>{item.observed_gross_profit_30d == null ? "원본 이익 자료 없음" : won(item.observed_gross_profit_30d)}</b></div><div><small>전년 같은 기간 · 동일 SKU</small><b>{item.year_ago_30d == null ? "비교 기간 없음" : `${n(item.year_ago_30d)}개`}</b></div><div><small><abbr title="판매율 = 기간 판매 수량 ÷ (기초재고 + 기간 입고). 기초재고 + 입고 − 판매가 기준일 재고와 맞을 때만 계산합니다.">판매율</abbr>{item.sell_through.start ? ` · ${item.sell_through.start}~${item.sell_through.end}` : ""}</small><b>{item.sell_through.pct == null ? (item.sell_through.status === "mismatch" ? "수불 불일치" : "계산 안 함") : `${n(item.sell_through.pct)}%`}</b>{item.sell_through.pct == null ? <small>{item.sell_through.reason}</small> : <small>판매 {n(item.sell_through.sold_units ?? 0)} ÷ (기초 {n(item.sell_through.opening_stock ?? 0)} + 입고 {n(item.sell_through.received_units ?? 0)}) · {item.sell_through.source}</small>}</div></div>
     <details className="work-inputs"><summary>현재 재고·판매가·원가 입력 {item.input_source && <span className={`work-provenance ${item.input_source}`}>{item.input_source === "simulation" ? "내가 입력한 가정" : "내가 입력한 조건"}</span>}</summary><div className="work-form-grid">
