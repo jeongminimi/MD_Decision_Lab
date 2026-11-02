@@ -104,7 +104,7 @@ export default function StrategyPlanner({ observedUnits, ready, canReorder, simC
   }
 
   async function save() {
-    if (!results || reason.trim().length < 5 || (!simContext && !results[choice === "A" ? 0 : 1].feasible)) return;
+    if (!results || reason.trim().length < 5 || (!simContext && !results[choice === "A" ? 0 : 1].feasible && !(strategy === "replenish" && choice === "B"))) return;
     setBusy(true); setMessage("");
     try {
       await saveDecision({ ...proposed, baseline_expected_units_30d: baselineUnits,
@@ -173,7 +173,7 @@ export default function StrategyPlanner({ observedUnits, ready, canReorder, simC
         simContext && !results[0].feasible && results[1].feasible ? "제안안에서 재고 공백 해소" :
         simContext && results[0].feasible && !results[1].feasible ? "제안안에 재고 공백 발생" : "두 안 모두 재고 공백"}</strong><small>{difference == null ? "공급 가능한 안의 매출총이익만 표시했습니다" : "예상 매출총이익 차이"}</small></div>
       <label className="strategy-reason">이 판단을 선택한 이유<textarea rows={2} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="예: 할인 후 30개 판매를 가정해도 이익이 줄어 현재가를 유지한다."/></label>
-      <button type="button" className="strategy-save" disabled={busy || reason.trim().length < 5 || (!simContext && !results[choice === "A" ? 0 : 1].feasible)} onClick={() => void save()}>{choice === "A" ? "현재 운영 유지" : action} 판단 저장</button>
+      <button type="button" className="strategy-save" disabled={busy || reason.trim().length < 5 || (!simContext && !results[choice === "A" ? 0 : 1].feasible && !(strategy === "replenish" && choice === "B"))} onClick={() => void save()}>{choice === "A" ? "현재 운영 유지" : action} 판단 저장</button>
       <p className="strategy-limit">판매량은 직접 입력한 가정입니다. 방문·노출 수가 없어 전환율은 계산하지 않으며, 광고·제작비는 매출총이익에 포함되지 않습니다.</p>
     </div>}
     {message && <p className="strategy-message" role="status">{message}</p>}

@@ -326,3 +326,48 @@ class WorkSimDecision(Base):
     rationale: Mapped[str] = mapped_column(Text)
     snapshot: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class WorkOperation(Base):
+    """A user's execution plan, kept separate from imported scenario orders."""
+
+    __tablename__ = "work_operations"
+    __table_args__ = (UniqueConstraint("sim_decision_id", name="uq_operation_sim_decision"),
+                      UniqueConstraint("work_decision_id", name="uq_operation_work_decision"))
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    dataset_id: Mapped[int] = mapped_column(ForeignKey("work_datasets.id"), index=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("work_products.id"), index=True)
+    sim_decision_id: Mapped[int | None] = mapped_column(ForeignKey("work_sim_decisions.id"), nullable=True)
+    work_decision_id: Mapped[int | None] = mapped_column(ForeignKey("work_decisions.id"), nullable=True)
+    kind: Mapped[str] = mapped_column(String(24))  # replenish, discount, campaign
+    status: Mapped[str] = mapped_column(String(24), default="planned")
+    source_label: Mapped[str] = mapped_column(String(32))  # user_record, scenario_record
+    planned_start: Mapped[date] = mapped_column(Date)
+    planned_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    planned_units: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    expected_receipt_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    opening_stock: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    expected_sales_units: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    expected_revenue_krw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    expected_profit_krw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    unit_cost_krw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    discount_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class WorkOperationEvent(Base):
+    """Append-only execution and stock events; a correction is a new event."""
+
+    __tablename__ = "work_operation_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_key: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
+    operation_id: Mapped[int] = mapped_column(ForeignKey("work_operations.id"), index=True)
+    event_date: Mapped[date] = mapped_column(Date, index=True)
+    kind: Mapped[str] = mapped_column(String(24))  # ordered, received, sale, started, finished, cancelled, stock_count
+    units: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    revenue_krw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

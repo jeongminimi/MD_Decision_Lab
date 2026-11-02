@@ -6,6 +6,7 @@ import { workApi, type WorkAnalysis, type WorkDataset, type WorkDecision, type W
 import HmSimulation from "./HmSimulation";
 import CatalogPage from "./CatalogPage";
 import StrategyPlanner from "./StrategyPlanner";
+import OperationsPanel from "./OperationsPanel";
 import "./work.css";
 
 const n = (value: number) => new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 1 }).format(value);
@@ -136,7 +137,7 @@ export default function WorkPage({ view, onNavigate }: { view: WorkView; onNavig
       </>}
       <UploadPanel onUploaded={async (id) => { const items = await workApi.datasets(); setDatasets(items); changeDatasetFromUpload(id, items); }} busy={busy} setBusy={setBusy} setError={setError} setNotice={setNotice}/>
     </>}
-    {view === "actions" && dataset && <>{dataset.kind === "company" && <SalesUpdatePanel datasetId={dataset.id} onUploaded={async (date) => { setDatasets(await workApi.datasets()); setAsOf(date); }}/>}<section className="panel work-panel"><div className="work-panel-heading"><div><h2>내 결정 기록</h2><small>저장한 검토와 실제 실행을 구분합니다.</small></div></div>{decisions.length ? <div className="work-decision-list">{decisions.map((item) => <DecisionRow key={item.id} item={item} dataset={dataset} onChanged={() => refresh()}/>)}</div> : <p className="work-empty">저장한 판단이 없습니다. 상품에서 판매 전략을 계산하고 이유를 남겨보세요.</p>}</section></>}
+    {view === "actions" && dataset && <>{dataset.kind === "company" && <SalesUpdatePanel datasetId={dataset.id} onUploaded={async (date) => { setDatasets(await workApi.datasets()); setAsOf(date); }}/>}<section className="panel work-panel"><div className="work-panel-heading"><div><h2>내 결정 기록</h2><small>저장한 검토와 실제 실행을 구분합니다.</small></div></div>{decisions.length ? <div className="work-decision-list">{decisions.map((item) => <DecisionRow key={item.id} item={item} dataset={dataset} onChanged={() => refresh()}/>)}</div> : <p className="work-empty">저장한 판단이 없습니다. 상품에서 판매 전략을 계산하고 이유를 남겨보세요.</p>}</section><OperationsPanel datasetId={dataset.id} source="work" decisions={decisions.map(d => ({ id: d.id, name: d.name, action: d.action, as_of_date: d.as_of_date }))}/></>}
     {view === "planning" && analysis && <PlanningPanel products={analysis.products} dataset={dataset!} onOpen={openProduct}/>}
     </OptionalObservedDetails>}
     {!dataset && <section className="panel work-panel"><h2>작업공간 연결</h2><p>자사 상품·판매 파일을 올리거나 H&M 시연 데이터가 연결되면 분석을 시작할 수 있습니다.</p><UploadPanel onUploaded={async (id) => { const items = await workApi.datasets(); setDatasets(items); changeDatasetFromUpload(id, items); }} busy={busy} setBusy={setBusy} setError={setError} setNotice={setNotice}/></section>}

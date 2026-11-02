@@ -544,7 +544,7 @@ def save_decision(payload: WorkDecisionPayload, db: Session = Depends(get_db)):
         expected_units_30d=payload.baseline_expected_units_30d if payload.baseline_expected_units_30d is not None else payload.expected_units_30d,
         purchase_units=0), db)
     calculated = baseline if payload.selected_option == "A" else proposed
-    if not calculated["feasible"]:
+    if not calculated["feasible"] and "매입" not in payload.action:
         raise HTTPException(400, f"{calculated['first_gap_date']}부터 재고가 비어 가정 판매량을 공급할 수 없습니다 "
                                  f"(최대 {calculated['max_gap_units']}개 부족). 수량이나 입고 시점을 수정하세요.")
     product = _product(payload.dataset_id, payload.sku, db)

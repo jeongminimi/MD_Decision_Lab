@@ -263,3 +263,28 @@ export const simApi = {
   decisions: (scenarioId: number) => call<SimDecision[]>(`/api/work/sim/decisions?scenario_id=${scenarioId}`),
   saveDecision: (body: SimOption & { action: string; rationale: string; baseline_expected_units_30d?: number; selected_option?: "A" | "B" }) => call<SimDecision>("/api/work/sim/decisions", json(body)),
 };
+
+export interface WorkOperation {
+  id: number; dataset_id: number; sku: string; name: string;
+  kind: "replenish" | "discount" | "campaign"; status: string; source_label: string;
+  planned_start: string; planned_end: string | null; planned_units: number | null;
+  expected_receipt_date: string | null; opening_stock: number | null; current_stock: number | null;
+  expected_sales_units: number | null; expected_revenue_krw: number | null;
+  expected_profit_krw: number | null; discount_pct: number | null;
+  period_days: number | null; expected_period_units: number | null;
+  expected_period_revenue_krw: number | null; expected_period_profit_krw: number | null;
+  received_units: number; recorded_sales_units: number; recorded_revenue_krw: number | null;
+  recorded_profit_krw: number | null; note: string;
+  events: { id: number; event_date: string; kind: string; units: number | null;
+    revenue_krw: number | null; stock_after: number | null; note: string }[];
+}
+
+export const operationApi = {
+  list: (datasetId: number) => call<WorkOperation[]>(`/api/work/operations?dataset_id=${datasetId}`),
+  create: (body: { decision_source: "sim" | "work"; decision_id: number; planned_start: string;
+    planned_end?: string; planned_units?: number; expected_receipt_date?: string; note?: string }) =>
+    call<WorkOperation>("/api/work/operations", json(body)),
+  event: (id: number, body: { event_date: string; kind: string; units?: number;
+    revenue_krw?: number; note?: string; client_key: string }) =>
+    call<WorkOperation>(`/api/work/operations/${id}/events`, json(body)),
+};

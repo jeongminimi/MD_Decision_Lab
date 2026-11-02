@@ -5,6 +5,7 @@ import { simApi, type SimAnalysis, type SimDecision, type SimForecast, type SimP
 import StrategyPlanner from "./StrategyPlanner";
 import PeerPanel from "./PeerPanel";
 import SeasonPlanner from "./SeasonPlanner";
+import OperationsPanel from "./OperationsPanel";
 import "./hm-sim.css";
 
 const n = (value: number) => new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 1 }).format(value);
@@ -133,7 +134,7 @@ export default function HmSimulation({ datasetId, view, onNavigate, requestedSku
       {focus && <div className="work-detail-target" id="sim-product-detail"><SimProductPanel key={`${scenario.id}-${focus.sku}`} scenario={scenario} sku={focus.sku} onSaved={async () => setDecisions(await simApi.decisions(scenario.id))}/></div>}
     </>}
 
-    {view === "actions" && <section className="panel work-panel"><div className="work-panel-heading"><div><h2>시뮬레이션 판단 기록</h2><small>저장 당시의 관측 판매·가상 조건·계산 결과를 그대로 보관합니다. 이후 자료가 바뀌어도 기록은 바뀌지 않습니다.</small></div></div>
+    {view === "actions" && <section className="panel work-panel"><div className="work-panel-heading"><div><h2>판단 기록</h2><small>저장 당시의 관측 판매·가상 조건·계산 결과를 그대로 보관합니다. 이후 자료가 바뀌어도 기록은 바뀌지 않습니다.</small></div></div>
       {decisions.length ? <div className="work-decision-list">{decisions.map((item) => <article className="work-decision-row" key={item.id}><div><b>{item.name} · {item.action}</b><span>{item.snapshot.scenario.name}</span></div><p>{item.rationale}</p>
         <small><Source kind="sales"/> 기준일 {item.as_of_date} · 최근 14일 {n(item.snapshot.observed.units_14d)}개 · 30일 {n(item.snapshot.observed.units_30d)}개</small>
         <small><Source kind="conditions"/> 재고 {n(item.snapshot.conditions.stock_on_hand)}개 · 30일 내 계획 입고 {n(item.snapshot.conditions.planned_inbound_30d)}개 · 판매가 {won(item.snapshot.conditions.selling_price_krw)} · 원가 {won(item.snapshot.conditions.unit_cost_krw)}</small>
@@ -142,6 +143,8 @@ export default function HmSimulation({ datasetId, view, onNavigate, requestedSku
         {(() => { const after = analysis.products.find((product) => product.sku === item.sku)?.post_as_of; return after && <small className="sim-after"><b>회고</b> 이후 관측 {after.start}~{after.end} <Source kind="sales"/> 판매 {n(after.observed_units)}개 · <Source kind="results"/> 가상 정책상 공급 부족 {n(after.policy_shortfall_units)}개{after.first_shortfall_date ? ` (첫 부족 ${after.first_shortfall_date})` : ""} · 저장 당시에는 알 수 없던 값이며 판단의 성과가 아닙니다</small>; })()}
       </article>)}</div> : <p className="work-empty">저장한 판단이 없습니다. 상품을 열어 판매 전략을 계산한 뒤 이유를 남겨 보세요.</p>}
     </section>}
+
+    {view === "actions" && <OperationsPanel datasetId={scenario.dataset_id} source="sim" decisions={decisions.map(d => ({ id: d.id, name: d.name, action: d.action, as_of_date: d.as_of_date }))}/>}
 
     {view === "planning" && <><SeasonPlanner datasetId={scenario.dataset_id}/><ForecastCheck scenarioId={scenario.id} onOpen={openProduct}/><Retrospective analysis={analysis}/><PostSummary analysis={analysis} onOpen={openProduct}/></>}
   </div>;

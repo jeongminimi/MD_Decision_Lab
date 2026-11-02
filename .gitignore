@@ -37,6 +37,8 @@ H&M판매량 파일/
 **/images.zip
 *.parquet
 *.arrow
+MD_Decision_Lab_V1_private_backup_*.zip
+portfolio/*.pptx
 frontend/tsconfig.tsbuildinfo
 .vite/
 
