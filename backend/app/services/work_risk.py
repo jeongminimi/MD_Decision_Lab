@@ -22,5 +22,16 @@ def classify_work_risk(*, u14: int, p14: int, stock: int | None, cover: float | 
     return "stable", f"최근 2주 {u14}개, 직전 2주 {p14}개 판매했습니다.", "추이 관찰"
 
 
+def recent_sales_slowdown(*, u7: int, p7: int, u30: int) -> dict:
+    """Independent sales signal: a stock-risk label must not hide a recent slowdown."""
+    rule = "최근 30일 판매 30개 이상, 직전 7일 판매 10개 이상이며 최근 7일 판매가 직전 7일보다 30% 이상 감소"
+    flagged = u30 >= 30 and p7 >= 10 and u7 * 10 <= p7 * 7
+    drop_pct = round((p7 - u7) / p7 * 100) if flagged else None
+    return {"flagged": flagged, "drop_pct": drop_pct, "rule": rule,
+            "reason": f"직전 7일 {p7}개 → 최근 7일 {u7}개, {drop_pct}% 감소. 최근 30일 {u30}개 판매했습니다." if flagged else None,
+            "action": "추가 매입 전 판매 둔화 원인 확인·노출/할인 검토" if flagged else None,
+            "source": "시뮬레이션"}
+
+
 RISK_PRIORITY = {"stockout": 0, "stock_risk": 1, "overstock": 2, "declining": 3, "rising": 4,
                  "not_observed": 5, "data_gap": 6, "stable": 7}

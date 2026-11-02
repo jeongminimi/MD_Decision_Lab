@@ -17,7 +17,7 @@ from ..services.demand_estimate import METHOD_LABELS, error_summary, estimate, s
 from ..services.hm_simulation import import_simulation
 from ..services.sell_through import sell_through
 from ..services.stock_timeline import EVEN_SPREAD_NOTE, HORIZON_DAYS, check_daily_availability
-from ..services.work_risk import RISK_PRIORITY, classify_work_risk
+from ..services.work_risk import RISK_PRIORITY, classify_work_risk, recent_sales_slowdown
 
 router = APIRouter(prefix="/api/work/sim", tags=["H&M operating simulation"])
 SOURCES = {"sales": "H&M 관측", "conditions": "가상 운영 조건", "results": "시뮬레이션"}
@@ -105,6 +105,7 @@ def _product_states(scenario: WorkSimScenario, db: Session, only_product: int | 
         series = daily[product.id]
         units = lambda start, end: sum(v for d, v in series.items() if start <= d <= end)
         u7, u14 = units(as_of - timedelta(6), as_of), units(as_of - timedelta(13), as_of)
+        p7 = units(as_of - timedelta(13), as_of - timedelta(7))
         p14, u30 = units(as_of - timedelta(27), as_of - timedelta(14)), units(as_of - timedelta(29), as_of)
         p30 = units(as_of - timedelta(59), as_of - timedelta(30))
         ledger = ledgers[product.id]
@@ -133,7 +134,7 @@ def _product_states(scenario: WorkSimScenario, db: Session, only_product: int | 
         states.append({
             "product_id": product.id, "sku": product.sku, "name": product.name, "section": product.section,
             "category": product.category, "image_ref": product.image_ref,
-            "observed": {"units_7d": u7, "units_14d": u14, "prior_14d": p14, "units_30d": u30, "prior_30d": p30,
+            "observed": {"units_7d": u7, "prior_7d": p7, "units_14d": u14, "prior_14d": p14, "units_30d": u30, "prior_30d": p30,
                          "first_sale_date": policy.observed_first_sale_date, "source": SOURCES["sales"]},
             "conditions": {"stock_on_hand": stock, "planned_inbound_after_as_of": sum(po.ordered_units for po in planned),
                            "planned_inbound_30d": planned_30d, "lead_time_days": policy.lead_time_days,
@@ -143,6 +144,7 @@ def _product_states(scenario: WorkSimScenario, db: Session, only_product: int | 
                            "list_price_krw": price.list_price_krw, "selling_price_krw": price.selling_price_krw,
                            "unit_cost_krw": price.unit_cost_krw, "source": SOURCES["conditions"]},
             "signal": {"risk": risk, "reason": reason, "action": action, "days_of_cover": cover,
+                       "sales_slowdown_7d": recent_sales_slowdown(u7=u7, p7=p7, u30=u30),
                        "simulated_revenue_30d_krw": round(sim_revenue, 2),
                        "simulated_gross_profit_30d_krw": round(sim_profit, 2), "source": SOURCES["results"]},
             "sell_through": {**season_sell, "start": season[0].flow_date, "end": as_of, "source": SOURCES["results"],
@@ -201,7 +203,9 @@ def analysis(scenario_id: int, db: Session = Depends(get_db)):
     return {"scenario": _scenario_out(scenario), "as_of_date": scenario.as_of_date,
             "products": [_public(state) for state in states],
             "summary": {"total_products": len(states), "risk_counts": dict(risks),
-                        "attention_count": sum(s["signal"]["risk"] not in {"stable", "not_observed"} for s in states),
+                        "attention_count": sum(s["signal"]["risk"] not in {"stable", "not_observed"} or
+                                               s["signal"]["sales_slowdown_7d"]["flagged"] for s in states),
+                        "sales_slowdown_7d_count": sum(s["signal"]["sales_slowdown_7d"]["flagged"] for s in states),
                         "units_30d": sum(s["observed"]["units_30d"] for s in states),
                         "simulated_gross_profit_30d_krw": round(sum(s["signal"]["simulated_gross_profit_30d_krw"] for s in states), 2)},
             "post_as_of_summary": {"start": scenario.as_of_date + timedelta(1), "end": scenario.ledger_end,
@@ -307,6 +311,10 @@ class SimComparePayload(BaseModel):
     discount_pct: float = Field(ge=0, le=70, allow_inf_nan=False)
     expected_units_30d: int = Field(ge=0, le=1_000_000)
     purchase_units: int = Field(default=0, ge=0, le=1_000_000)
+    order_date: date | None = None
+    lead_time_days: int | None = Field(default=None, ge=0, le=365)
+    stock_on_hand: int | None = Field(default=None, ge=0, le=1_000_000)
+    include_existing_orders: bool = True
 
 
 def _compare(payload: SimComparePayload, db: Session) -> tuple[dict, dict, WorkSimScenario]:
@@ -316,21 +324,38 @@ def _compare(payload: SimComparePayload, db: Session) -> tuple[dict, dict, WorkS
     if payload.purchase_units and not conditions["reorderable"]:
         raise HTTPException(400, "재발주 불가로 설정된 상품은 추가 매입을 가정할 수 없습니다.")
     as_of = scenario.as_of_date
-    purchase_arrival = as_of + timedelta(conditions["lead_time_days"])
-    purchase_in_window = conditions["lead_time_days"] <= HORIZON_DAYS
-    receipts = [(po.expected_receipt_date, po.ordered_units) for po in state["_orders"]
-                if po.order_date <= as_of < po.expected_receipt_date]
+    if payload.order_date is not None and payload.order_date < as_of:
+        raise HTTPException(400, "발주 예정일은 판단 기준일보다 앞설 수 없습니다.")
+    order_date = payload.order_date or as_of
+    lead_days = payload.lead_time_days if payload.lead_time_days is not None else conditions["lead_time_days"]
+    stock = payload.stock_on_hand if payload.stock_on_hand is not None else conditions["stock_on_hand"]
+    purchase_arrival = order_date + timedelta(days=lead_days)
+    purchase_in_window = purchase_arrival <= as_of + timedelta(days=HORIZON_DAYS)
+    receipts = ([(po.expected_receipt_date, po.ordered_units) for po in state["_orders"]
+                 if po.order_date <= as_of < po.expected_receipt_date]
+                if payload.include_existing_orders else [])
     if payload.purchase_units:
         receipts.append((purchase_arrival, payload.purchase_units))
-    check = check_daily_availability(as_of, conditions["stock_on_hand"], receipts, payload.expected_units_30d)
+    check = check_daily_availability(as_of, stock, receipts, payload.expected_units_30d)
+    low, high = 0, min(1_000_000, check["available_units"])
+    while low < high:
+        mid = (low + high + 1) // 2
+        if check_daily_availability(as_of, stock, receipts, mid)["feasible"]:
+            low = mid
+        else:
+            high = mid - 1
     price = round(conditions["selling_price_krw"] * (1 - payload.discount_pct / 100), 2)
     feasible = check["feasible"]
     result = {
         "sku": payload.sku, "as_of_date": as_of, "discount_pct": payload.discount_pct,
         "expected_units_30d": payload.expected_units_30d, "purchase_units": payload.purchase_units,
+        "order_date": order_date if payload.purchase_units else None,
+        "lead_time_days": lead_days, "stock_on_hand": stock,
+        "include_existing_orders": payload.include_existing_orders,
         "purchase_arrival_date": purchase_arrival if payload.purchase_units else None,
         "purchase_counted_in_30d": purchase_in_window if payload.purchase_units else None,
         "available_units_30d": check["available_units"], "proposed_unit_price_krw": price,
+        "max_feasible_units_30d": low,
         "unit_cost_krw": conditions["unit_cost_krw"], "feasible": feasible,
         "first_gap_date": check["first_gap_date"], "max_gap_units": check["max_gap_units"],
         "receipts_counted": check["receipts_counted"],
@@ -338,7 +363,7 @@ def _compare(payload: SimComparePayload, db: Session) -> tuple[dict, dict, WorkS
         "estimated_gross_profit_krw": round(payload.expected_units_30d * (price - conditions["unit_cost_krw"]), 2) if feasible else None,
         "estimated_remaining_units": check["available_units"] - payload.expected_units_30d if feasible else None,
         "source": SOURCES["results"],
-        "note": ("가용 수량 = 8월 31일 가상 재고 + 30일 안에 들어오는 계획 입고 + (리드타임이 30일 이내인 경우) 추가 매입. "
+        "note": ("가용 수량 = 입력한 기준일 재고 + 선택한 가상 계획 입고 + 30일 안에 도착하는 추가 매입. "
                  + EVEN_SPREAD_NOTE + " 예상 판매량은 사용자가 넣은 가정이며, 할인 효과나 실제 H&M 매출이 아닙니다."),
     }
     return result, state, scenario
@@ -369,10 +394,9 @@ def save_decision(payload: SimDecisionPayload, db: Session = Depends(get_db)):
     proposed, state, scenario = _compare(payload, db)
     baseline, _, _ = _compare(SimComparePayload(scenario_id=payload.scenario_id, sku=payload.sku,
         discount_pct=0, expected_units_30d=payload.baseline_expected_units_30d if payload.baseline_expected_units_30d is not None else state["observed"]["units_30d"],
-        purchase_units=0), db)
+        purchase_units=0, stock_on_hand=payload.stock_on_hand,
+        include_existing_orders=payload.include_existing_orders), db)
     result = baseline if payload.selected_option == "A" else proposed
-    if not result["feasible"]:
-        raise HTTPException(400, _gap_message(result))
     snapshot = {"scenario": {"id": scenario.id, "name": scenario.name, "as_of_date": scenario.as_of_date.isoformat()},
                 "observed": {**state["observed"], "first_sale_date": _iso(state["observed"]["first_sale_date"])},
                 "conditions": {**state["conditions"], "reorder_stop_date": _iso(state["conditions"]["reorder_stop_date"])},
@@ -380,6 +404,7 @@ def save_decision(payload: SimDecisionPayload, db: Session = Depends(get_db)):
                 "sell_through": {**state["sell_through"], "start": _iso(state["sell_through"]["start"]),
                                  "end": _iso(state["sell_through"]["end"])},
                 "comparison": {**result, "as_of_date": scenario.as_of_date.isoformat(),
+                               "order_date": _iso(result["order_date"]),
                                "purchase_arrival_date": _iso(result["purchase_arrival_date"]),
                                "first_gap_date": _iso(result["first_gap_date"]),
                                "receipts_counted": [{"date": r["date"].isoformat(), "units": r["units"]}

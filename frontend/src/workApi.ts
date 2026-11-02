@@ -175,12 +175,14 @@ export interface SimScenario {
 
 export interface SimProduct {
   product_id: number; sku: string; name: string; section: string; category: string; image_ref: string | null;
-  observed: { units_7d: number; units_14d: number; prior_14d: number; units_30d: number; prior_30d: number;
+  observed: { units_7d: number; prior_7d: number; units_14d: number; prior_14d: number; units_30d: number; prior_30d: number;
     first_sale_date: string | null; source: string };
   conditions: { stock_on_hand: number; planned_inbound_after_as_of: number; planned_inbound_30d: number;
     lead_time_days: number; reorderable: boolean; reorder_stop_date: string | null; scenario_lifecycle: string;
     lifecycle_label: string; list_price_krw: number; selling_price_krw: number; unit_cost_krw: number; source: string };
   signal: { risk: string; reason: string; action: string; days_of_cover: number | null;
+    sales_slowdown_7d: { flagged: boolean; drop_pct: number | null; rule: string; reason: string | null;
+      action: string | null; source: string };
     simulated_revenue_30d_krw: number; simulated_gross_profit_30d_krw: number; source: string };
   sell_through: SellThrough;
   post_as_of: { start: string; end: string; observed_units: number; supplied_units: number;
@@ -190,7 +192,7 @@ export interface SimProduct {
 export interface SimAnalysis {
   scenario: SimScenario; as_of_date: string; products: SimProduct[];
   summary: { total_products: number; risk_counts: Record<string, number>; attention_count: number;
-    units_30d: number; simulated_gross_profit_30d_krw: number };
+    sales_slowdown_7d_count: number; units_30d: number; simulated_gross_profit_30d_krw: number };
   post_as_of_summary: { start: string; end: string; observed_units: number; supplied_units: number;
     policy_shortfall_units: number; products_with_shortfall: number; note: string };
   retrospective: SimRetrospective;
@@ -233,6 +235,8 @@ export interface SimComparison {
   proposed_unit_price_krw: number; unit_cost_krw: number; feasible: boolean; estimated_revenue_krw: number | null;
   first_gap_date: string | null; max_gap_units: number; receipts_counted: { date: string; units: number }[];
   estimated_gross_profit_krw: number | null; estimated_remaining_units: number | null; source: string; note: string;
+  max_feasible_units_30d?: number; order_date?: string | null; lead_time_days?: number;
+  stock_on_hand?: number; include_existing_orders?: boolean;
 }
 
 export interface SimDecision {
@@ -243,7 +247,8 @@ export interface SimDecision {
     alternatives?: { selected_option: "A" | "B"; A: SimComparison; B: SimComparison } };
 }
 
-export interface SimOption { scenario_id: number; sku: string; discount_pct: number; expected_units_30d: number; purchase_units: number }
+export interface SimOption { scenario_id: number; sku: string; discount_pct: number; expected_units_30d: number; purchase_units: number;
+  order_date?: string; lead_time_days?: number; stock_on_hand?: number; include_existing_orders?: boolean }
 
 const json = (body: unknown): RequestInit => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 

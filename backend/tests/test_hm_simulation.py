@@ -4,7 +4,7 @@ import shutil
 import tempfile
 import unittest
 from collections import Counter
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -20,11 +20,23 @@ from app.main import app
 from app.models import (WorkDailySale, WorkDataset, WorkProduct, WorkSimDecision, WorkSimLedger, WorkSimPolicy,
                         WorkSimPrice, WorkSimScenario)
 from app.services.hm_simulation import AS_OF, CASE_DIR, import_simulation
+from app.services.work_risk import recent_sales_slowdown
 
 REAL_DB = Path(__file__).resolve().parents[1] / "md_decision_lab.db"
 # The case CSVs derive from H&M Kaggle data and are not committed; generate them locally to run these tests.
 CASE_FILES_PRESENT = all((CASE_DIR / name).exists() for name in (
     "hm_product_policy.csv", "hm_inventory_ledger.csv", "hm_purchase_orders.csv", "hm_economics.csv"))
+
+
+class RecentSalesSlowdownTests(unittest.TestCase):
+    def test_recent_drop_needs_meaningful_30_and_prior_7_day_sales(self):
+        signal = recent_sales_slowdown(u7=7, p7=10, u30=30)
+        self.assertTrue(signal["flagged"])
+        self.assertEqual(signal["drop_pct"], 30)
+        self.assertIn("10개 → 최근 7일 7개", signal["reason"])
+        self.assertFalse(recent_sales_slowdown(u7=7, p7=10, u30=29)["flagged"])
+        self.assertFalse(recent_sales_slowdown(u7=6, p7=9, u30=30)["flagged"])
+        self.assertFalse(recent_sales_slowdown(u7=8, p7=10, u30=30)["flagged"])
 
 
 def read_case(name: str, directory: Path = CASE_DIR) -> list[dict[str, str]]:
@@ -147,6 +159,22 @@ class HmSimulationTests(unittest.TestCase):
             for part in ("observed", "conditions", "signal"):
                 self.assertEqual(item[part], after[sku][part], f"{sku} {part}")
 
+    def test_recent_sales_slowdown_is_independent_of_stock_risk(self):
+        scenario = self.scenario()
+        result = sim.analysis(scenario.id, self.db)
+        products = result["products"]
+        flagged = [item for item in products if item["signal"]["sales_slowdown_7d"]["flagged"]]
+        self.assertEqual(result["summary"]["sales_slowdown_7d_count"], len(flagged))
+        self.assertTrue(any(item["signal"]["risk"] == "stock_risk" for item in flagged))
+        self.assertTrue(any(item["signal"]["risk"] == "overstock" for item in flagged))
+        for item in products:
+            observed = item["observed"]
+            self.assertEqual(observed["units_7d"] + observed["prior_7d"], observed["units_14d"])
+            if item in flagged:
+                self.assertGreaterEqual(observed["units_30d"], 30)
+                self.assertGreaterEqual(observed["prior_7d"], 10)
+                self.assertLessEqual(observed["units_7d"] * 10, observed["prior_7d"] * 7)
+
     def test_unobserved_products_are_not_called_stable(self):
         scenario = self.scenario()
         # The sample is chosen from July-August sales, so every product has sold; erase one product's history up to
@@ -231,9 +259,24 @@ class HmSimulationTests(unittest.TestCase):
         self.assertFalse(result["feasible"])
         self.assertIsNotNone(result["first_gap_date"])
         self.assertIsNone(result["estimated_gross_profit_krw"])
-        with self.assertRaises(HTTPException) as error:
-            sim.save_decision(payload, self.db)
-        self.assertIn(str(result["first_gap_date"]), error.exception.detail)
+        saved = sim.save_decision(payload, self.db)
+        self.assertFalse(saved["snapshot"]["comparison"]["feasible"])
+        self.assertEqual(saved["snapshot"]["comparison"]["first_gap_date"], str(result["first_gap_date"]))
+
+    def test_user_order_date_and_lead_time_do_not_inherit_synthetic_orders(self):
+        scenario = self.scenario()
+        item = next(p for p in sim.analysis(scenario.id, self.db)["products"] if p["conditions"]["reorderable"])
+        common = dict(scenario_id=scenario.id, sku=item["sku"], discount_pct=0,
+                      expected_units_30d=30, purchase_units=100, stock_on_hand=0,
+                      include_existing_orders=False)
+        late = sim.compare(sim.SimComparePayload(**common, order_date=AS_OF, lead_time_days=35), self.db)
+        self.assertFalse(late["purchase_counted_in_30d"])
+        self.assertEqual(late["available_units_30d"], 0)
+        self.assertEqual(late["max_feasible_units_30d"], 0)
+        early = sim.compare(sim.SimComparePayload(**common, order_date=AS_OF, lead_time_days=1), self.db)
+        self.assertTrue(early["feasible"])
+        self.assertEqual(early["purchase_arrival_date"], AS_OF + timedelta(days=1))
+        self.assertEqual(early["available_units_30d"], 100)
 
     def test_sell_through_is_simulated_from_the_ledger_before_as_of(self):
         scenario = self.scenario()
