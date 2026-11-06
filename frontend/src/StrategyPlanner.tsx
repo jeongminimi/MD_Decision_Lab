@@ -130,12 +130,12 @@ export default function StrategyPlanner({ observedUnits, ready, canReorder, simC
       coverDays !== null && coverDays <= leadDays + 7 ? "추가 발주 검토" : "현재 재고 확인·발주 보류";
 
   return <section className="strategy-planner" aria-label="판매 및 마케팅 전략 수립">
-    <header className="strategy-heading"><div><span className="strategy-eyebrow">판매 및 마케팅 전략</span><h3>상품별 판매 전략 비교</h3><p>전략을 고르고 예상 판매량을 입력하면, 현재 운영과 이익·재고를 비교할 수 있습니다.</p></div><span className="strategy-badge">MD 판단 시뮬레이션</span></header>
+    <header className="strategy-heading"><div><span className="strategy-eyebrow">03 · 판매 및 마케팅 전략</span><h3>상품별 판매 전략 비교</h3><p>전략을 고르고 예상 판매량을 입력하면, 현재 운영과 예상 이익·재고를 비교할 수 있습니다.</p></div><span className="strategy-badge">전략별 예상 계산</span></header>
 
     {simContext && <div className="strategy-guidance"><b>{guidance}</b>
-      <p>H&M 관측 판매: 최근 7일 {format(simContext.units7)}개 · 14일 {format(simContext.units14)}개 · 30일 {format(observedUnits)}개.
-        {coverDays !== null ? ` 입력한 재고는 최근 14일 속도로 약 ${format(coverDays)}일분입니다.` : " 최근 14일 판매가 없어 재고 소진일을 계산하지 않습니다."} {canReorder ? `가정한 입고 소요일 ${leadDays}일과 안전 검토 기간 7일을 비교했습니다.` : "가상 상품 상태에서 재발주 불가로 설정됐습니다."}</p>
-      <p>기준일 재고 {format(simContext.stock)}개 · 입고 소요일 {simContext.leadDays}일 · 기존 계획 입고 {format(simContext.plannedInbound)}개는 모두 가상 운영 조건입니다. 상품 상태: {simContext.lifecycle}.</p>
+      <p>최근 판매: 7일 {format(simContext.units7)}개 · 14일 {format(simContext.units14)}개 · 30일 {format(observedUnits)}개.
+        {coverDays !== null ? ` 현재 재고는 최근 14일 속도로 약 ${format(coverDays)}일분입니다.` : " 최근 14일 판매가 없어 재고 소진일을 계산하지 않습니다."} {canReorder ? `입고 소요일 ${leadDays}일과 안전 검토 기간 7일을 비교했습니다.` : "이 상품은 재발주 불가로 설정됐습니다."}</p>
+      <p>기준일 재고 {format(simContext.stock)}개 · 입고 소요일 {simContext.leadDays}일 · 기존 계획 입고 {format(simContext.plannedInbound)}개 · 상품 상태 {simContext.lifecycle}</p>
       {simContext.salesSlowdown7d?.flagged && <p><strong>최근 판매 저조:</strong> {simContext.salesSlowdown7d.reason} {simContext.salesSlowdown7d.action}.</p>}
     </div>}
     <div className="strategy-step"><div className="strategy-step-title"><span>1</span><div><b>검토할 행동 선택</b><small>할인, 기획전, 노출 또는 물량 확보</small></div></div>

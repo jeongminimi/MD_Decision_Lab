@@ -32,16 +32,15 @@ export default function App() {
     <aside className={`sidebar ${mobileNavOpen ? "mobile-open" : ""}`}>
       <div className="brand-lockup"><div className="brand-mark">MD</div><div><strong>Decision Lab</strong><span>COMMERCE INTELLIGENCE</span></div></div>
       <nav className="side-nav" aria-label="주요 메뉴">
-        <button className={view === "overview" ? "active" : ""} onClick={() => navigate("overview")}><LayoutDashboard size={17} /> 오늘의 할 일</button>
-        <button className={view === "products" ? "active" : ""} onClick={() => navigate("products")}><Boxes size={17} /> 전체 상품</button>
-        <button className={view === "actions" ? "active" : ""} onClick={() => navigate("actions")}><Activity size={17} /> 내 결정 기록</button>
-        <p className="nav-spaced">분석</p>
-        <button className={view === "planning" ? "active" : ""} onClick={() => navigate("planning")}><ChartNoAxesCombined size={17} /> 다음 시즌 기획</button>
+        <button className={view === "overview" ? "active" : ""} onClick={() => navigate("overview")}><span className="nav-step">01</span><LayoutDashboard size={17} /> 오늘의 할 일</button>
+        <button className={view === "products" ? "active" : ""} onClick={() => navigate("products")}><span className="nav-step">02</span><Boxes size={17} /> 전체 상품</button>
+        <button className={view === "actions" ? "active" : ""} onClick={() => navigate("actions")}><span className="nav-step">03</span><Activity size={17} /> 내 결정 기록</button>
+        <button className={view === "planning" ? "active" : ""} onClick={() => navigate("planning")}><span className="nav-step">04</span><ChartNoAxesCombined size={17} /> 다음 시즌 기획</button>
       </nav>
       <div className="sidebar-bottom"><div className="user-row"><div className="avatar">JM</div><div><b>MD 매니저</b><small>로컬 작업공간</small></div></div></div>
     </aside>
     <main className="main-area">
-      <header className="topbar"><button className="mobile-menu" aria-label="메뉴 열기" aria-expanded={mobileNavOpen} onClick={() => setMobileNavOpen((open) => !open)}>{mobileNavOpen ? <X size={20} /> : <Menu size={20} />}</button><div className="breadcrumbs"><span>MD Decision Lab</span><b>/</b><strong>{labels[view]}</strong></div><button type="button" className="photo-toggle" aria-pressed={hidePhotos} onClick={togglePhotos} title="상품 사진은 H&M Kaggle 자료입니다. 캡처·시연 자료에서는 숨기세요.">{hidePhotos ? <ImageOff size={16}/> : <Image size={16}/>}{hidePhotos ? "사진 숨김" : "사진 표시"}</button></header>
+      <header className="topbar"><button className="mobile-menu" aria-label={mobileNavOpen ? "메뉴 닫기" : "메뉴 열기"} aria-expanded={mobileNavOpen} onClick={() => setMobileNavOpen((open) => !open)}>{mobileNavOpen ? <X size={20} /> : <Menu size={20} />}</button><div className="breadcrumbs"><span>MD Decision Lab</span><b>/</b><strong>{labels[view]}</strong></div><button type="button" className="photo-toggle" aria-pressed={hidePhotos} onClick={togglePhotos} title="상품 사진은 H&M Kaggle 자료입니다. 캡처·시연 자료에서는 숨기세요.">{hidePhotos ? <ImageOff size={16}/> : <Image size={16}/>}{hidePhotos ? "사진 숨김" : "사진 표시"}</button></header>
       <div className="content-wrap"><WorkPage view={view} onNavigate={navigate}/><footer className="page-footer"><span>MD Decision Lab · 로컬 MD 작업공간</span><span>시나리오는 실제 매출 성과가 아닙니다.</span></footer></div>
     </main>
   </div>;

@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
-import { ArrowRight, Check, Database, FileUp, Info, RefreshCw, TriangleAlert } from "lucide-react";
+import { ArrowRight, Check, Database, FileUp, RefreshCw, TriangleAlert } from "lucide-react";
 import type { WorkView } from "./App";
 import { workApi, type WorkAnalysis, type WorkDataset, type WorkDecision, type WorkInputs, type WorkProduct } from "./workApi";
 import HmSimulation from "./HmSimulation";
@@ -50,7 +49,6 @@ export default function WorkPage({ view, onNavigate }: { view: WorkView; onNavig
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const [observedExpanded, setObservedExpanded] = useState(false);
   const [requestedSimSku, setRequestedSimSku] = useState<string | null>(null);
   const scrollToProduct = useRef(false);
   const dataset = datasets.find((item) => item.id === datasetId);
@@ -82,13 +80,12 @@ export default function WorkPage({ view, onNavigate }: { view: WorkView; onNavig
   const visible = useMemo(() => analysis?.products.filter((item) => `${item.sku} ${item.name} ${item.category}`.toLowerCase().includes(query.toLowerCase())) || [], [analysis, query]);
   const focus = analysis?.products.find((item) => item.sku === selectedSku);
   useLayoutEffect(() => {
-    if ((!simActive || observedExpanded) && view === "overview" && scrollToProduct.current) {
+    if (view === "overview" && scrollToProduct.current) {
       const target = document.getElementById("work-product-detail");
       if (target) { scrollToProduct.current = false; target.scrollIntoView({ behavior: "instant", block: "start" }); }
     }
-  }, [simActive, observedExpanded, view, selectedSku, analysis]);
+  }, [view, selectedSku, analysis]);
   function openProduct(sku: string) {
-    if (simActive) setObservedExpanded(true);
     scrollToProduct.current = true;
     setSelectedSku(sku);
     if (view !== "overview") onNavigate("overview");
@@ -106,21 +103,20 @@ export default function WorkPage({ view, onNavigate }: { view: WorkView; onNavig
   }
 
   return <div className="work-page">
-    <header className="work-header"><div><span className="section-kicker">MD DECISION LAB</span><h1>{view === "overview" ? "오늘의 할 일" : view === "products" ? "전체 상품" : view === "actions" ? "내 결정 기록" : "다음 시즌 기획"}</h1></div>
-      <div className="work-source-controls"><label>작업공간<select aria-label="작업공간" value={datasetId ?? ""} onChange={(event) => changeDataset(Number(event.target.value))}>{datasets.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>{dataset && <span className={`work-provenance ${dataset.kind}`}>{dataset.kind === "hm" ? "H&M 실제 판매 시연" : dataset.kind === "synthetic" ? "가상 데모 자료" : "자사 업로드 자료"}</span>}</div>
+    <header className="work-header"><div><span className="section-kicker">MD DECISION LAB / {view === "overview" ? "01 PRIORITY" : view === "products" ? "02 CATALOG" : view === "actions" ? "03 DECISIONS" : "04 NEXT SEASON"}</span><h1>{view === "overview" ? "오늘 먼저 볼 상품" : view === "products" ? "상품을 찾아 비교하기" : view === "actions" ? "결정과 결과 돌아보기" : "다음 시즌 물량 기획"}</h1><p className="work-header-lead">{view === "overview" ? "판매 변화와 재고를 확인하고, 상품별 다음 조치를 결정합니다." : view === "products" ? "상품을 검색해 판매량과 재고를 확인하고 검토할 상품을 고릅니다." : view === "actions" ? "선택 당시의 근거와 실행 기록을 보고 이후 판매를 확인합니다." : "유사 상품의 시즌별 흐름을 비교하고 준비 물량을 기록합니다."}</p></div>
+      <div className="work-source-controls"><label>작업공간<select aria-label="작업공간" value={datasetId ?? ""} onChange={(event) => changeDataset(Number(event.target.value))}>{datasets.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label></div>
     </header>
     {error && <div className="error-banner"><TriangleAlert size={17}/>{error}</div>}
     {notice && <div className="notice-banner"><Check size={16}/>{notice}</div>}
     {view === "products" && dataset && <CatalogPage dataset={dataset} asOf={simActive ? HM_DECISION_DATE : asOf} simulation={simActive} onReview={reviewFromCatalog}/>}
     {simActive && datasetId != null && view !== "products" && <HmSimulation datasetId={datasetId} view={view} onNavigate={onNavigate} requestedSku={requestedSimSku} onRequestedSkuUsed={() => setRequestedSimSku(null)}/>}
-    {(!simActive || view !== "products") && <OptionalObservedDetails enabled={simActive} expanded={observedExpanded} onExpandedChange={setObservedExpanded}>
-    {dataset && view !== "products" && <section className="work-filters" aria-label="분석 범위">
+    {view !== "products" && <div className="work-flow-section">
+    {dataset && <section className="work-filters" aria-label="분석 범위">
       <label>의류 섹션<select value={section} onChange={(event) => { setSection(event.target.value); setSelectedSku(""); }}><option value="">전체 섹션</option>{analysis?.sections.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
       <label>그래프 시작일<input type="date" min={dataset.start_date} max={asOf} value={chartStart} onChange={(event) => setChartStart(event.target.value)}/></label>
       <label>분석 기준일<input type="date" min={dataset.start_date} max={dataset.end_date} value={asOf} onChange={(event) => { setAsOf(event.target.value); setSelectedSku(""); }}/></label>
       <button type="button" className="button button-secondary" onClick={() => void refresh()}><RefreshCw size={15}/> 새로고침</button>
     </section>}
-    {dataset && view !== "products" && <details className="work-source-details"><summary><Info size={15}/> 데이터 출처</summary><p>{dataset.source_note}</p></details>}
     {view === "overview" && <>
       {analysis && <>
         <section className="work-summary" aria-label="핵심 지표"><div><small>최근 30일 판매</small><strong>{n(analysis.summary.units_30d)}개</strong></div><div><small>우선 확인</small><strong>{n(analysis.summary.attention_count)}개</strong></div><div><small>분석 상품</small><strong>{n(analysis.summary.total_products)}종</strong></div></section>
@@ -139,9 +135,9 @@ export default function WorkPage({ view, onNavigate }: { view: WorkView; onNavig
     </>}
     {view === "actions" && dataset && <>{dataset.kind === "company" && <SalesUpdatePanel datasetId={dataset.id} onUploaded={async (date) => { setDatasets(await workApi.datasets()); setAsOf(date); }}/>}<section className="panel work-panel"><div className="work-panel-heading"><div><h2>내 결정 기록</h2><small>저장한 검토와 실제 실행을 구분합니다.</small></div></div>{decisions.length ? <div className="work-decision-list">{decisions.map((item) => <DecisionRow key={item.id} item={item} dataset={dataset} onChanged={() => refresh()}/>)}</div> : <p className="work-empty">저장한 판단이 없습니다. 상품에서 판매 전략을 계산하고 이유를 남겨보세요.</p>}</section><OperationsPanel datasetId={dataset.id} source="work" decisions={decisions.map(d => ({ id: d.id, name: d.name, action: d.action, as_of_date: d.as_of_date }))}/></>}
     {view === "planning" && analysis && <PlanningPanel products={analysis.products} dataset={dataset!} onOpen={openProduct}/>}
-    </OptionalObservedDetails>}
+    </div>}
     {!dataset && <section className="panel work-panel"><h2>작업공간 연결</h2><p>자사 상품·판매 파일을 올리거나 H&M 시연 데이터가 연결되면 분석을 시작할 수 있습니다.</p><UploadPanel onUploaded={async (id) => { const items = await workApi.datasets(); setDatasets(items); changeDatasetFromUpload(id, items); }} busy={busy} setBusy={setBusy} setError={setError} setNotice={setNotice}/></section>}
-    {dataset && <WorkPurposeFooter isHm={simActive}/>}
+    {dataset && <WorkPurposeFooter dataset={dataset}/>}
   </div>;
 
   function changeDatasetFromUpload(id: number, items: WorkDataset[]) {
@@ -150,12 +146,7 @@ export default function WorkPage({ view, onNavigate }: { view: WorkView; onNavig
   }
 }
 
-function OptionalObservedDetails({ enabled, expanded, onExpandedChange, children }: { enabled: boolean; expanded: boolean; onExpandedChange: (value: boolean) => void; children: ReactNode }) {
-  if (!enabled) return <>{children}</>;
-  return <details className="panel work-panel work-observed-extra" open={expanded} onToggle={(event) => { if (event.target === event.currentTarget) onExpandedChange(event.currentTarget.open); }}><summary>판매 원본 분석·직접 입력·기존 기록</summary><p>H&M 판매 원본으로 따로 살펴보거나 입력한 조건을 확인할 때 사용합니다. 위의 가상 운영 조건은 바뀌지 않습니다.</p>{children}</details>;
-}
-
-function WorkPurposeFooter({ isHm }: { isHm: boolean }) {
+function WorkPurposeFooter({ dataset }: { dataset: WorkDataset }) {
   return <section className="work-purpose-footer" aria-label="기능과 데이터 안내">
     <h2>기능별 확인 내용</h2>
     <ul>
@@ -166,7 +157,7 @@ function WorkPurposeFooter({ isHm }: { isHm: boolean }) {
       <li><b>다음 시즌 기획</b><span>과거 판매 흐름과 추정 오차를 보고 준비 물량을 검토합니다.</span></li>
       <li><b>자사 파일 연결</b><span>상품·판매 자료를 올려 같은 기준으로 자사 상품을 분석합니다.</span></li>
     </ul>
-    {isHm && <p className="work-purpose-source"><b>자료 기준</b> 판매 수량과 상품 정보는 H&amp;M 공개 기록입니다. 재고·발주·원화 가격·원가는 원본에 없어 기준일 전 판매 속도, 상품 종류, 가정한 리드타임·발주 규칙으로 만든 시연 값입니다. 이를 결합한 재고 위험과 매출총이익은 시뮬레이션 결과이며 실제 H&amp;M의 재고·이익·전략 효과가 아닙니다. {HM_SAMPLE_BIAS}</p>}
+    <p className="work-purpose-source"><b>데이터와 계산 기준</b> {dataset.kind === "hm" ? <>판매 수량과 상품 정보는 H&amp;M 공개 기록입니다. 원본에 없는 재고·발주·원화 가격·원가는 판매 속도와 상품 종류 등을 근거로 구성한 시연 조건입니다. 재고 위험·이익·전략별 결과는 이 조건을 사용한 계산이며 실제 H&amp;M의 재고·이익·전략 성과가 아닙니다. {HM_SAMPLE_BIAS}</> : dataset.kind === "synthetic" ? <>이 작업공간은 예시 자료입니다. 판매·재고·가격과 계산 결과는 실제 영업 성과를 뜻하지 않습니다. {dataset.source_note}</> : <>현재 작업공간에 업로드한 상품·판매 자료와 사용자가 입력한 조건을 기준으로 계산합니다. 전략별 예상 결과는 실제 실행 성과가 아닙니다. {dataset.source_note}</>}</p>
   </section>;
 }
 
@@ -205,10 +196,10 @@ function ProductDetail({ item, dataset, asOf, onChanged }: { item: WorkProduct; 
   }
   const comparisonReady = item.stock_on_hand != null && item.inbound_units != null && item.unit_price_krw != null && item.unit_cost_krw != null;
   return <section className="panel work-panel work-detail"><div className="work-panel-heading"><div><span className="section-kicker">PRODUCT REVIEW · {item.sku}</span><h2>{item.name}</h2><small>{item.section} · {item.category}</small></div><span className="work-detail-identity">{item.image_ref && <img className="work-product-image large" src={item.image_ref} alt={`${item.name} 상품 사진`} loading="lazy"/>}<span className={`work-risk ${item.risk}`}>{riskLabels[item.risk] || item.risk}</span></span></div>
-    <div className="work-observation"><span className="work-provenance observed">{dataset.kind === "hm" ? "H&M 실제 판매 기록" : dataset.kind === "synthetic" ? "가상 판매 기록" : "자사 판매 기록"}</span><b>{item.reason}</b><small>최근 7일 {n(item.units_7d)}개 · 30일 {n(item.units_30d)}개 · 전기 30일 {n(item.prior_30d)}개</small><small>채널별 30일: {Object.entries(item.channel_units_30d).map(([channel, units]) => `${channel} ${n(units)}개`).join(" · ") || "기록 없음"}{dataset.kind === "hm" ? " · 채널 번호의 온·오프라인 의미는 확인 전" : ""}</small><strong>다음 검토: {item.action}</strong></div>
-    <div className="work-metrics"><div><small><abbr title="최근 14일 판매 수량을 14로 나눈 값으로 재고를 나눕니다. 판매 기간이 짧으면 관측된 일수로 나눕니다.">재고 소진 예상일</abbr></small><b>{item.days_of_cover == null ? "재고 입력 후 계산" : `약 ${n(item.days_of_cover)}일`}</b></div><div><small><abbr title="매출에서 상품 매입원가만 뺀 값입니다. 배송비·광고비 등은 제외합니다.">30일 매출총이익</abbr></small><b>{item.observed_gross_profit_30d == null ? "원본 이익 자료 없음" : won(item.observed_gross_profit_30d)}</b></div><div><small>전년 같은 기간 · 동일 SKU</small><b>{item.year_ago_30d == null ? "비교 기간 없음" : `${n(item.year_ago_30d)}개`}</b></div><div><small><abbr title="판매율 = 기간 판매 수량 ÷ (기초재고 + 기간 입고). 기초재고 + 입고 − 판매가 기준일 재고와 맞을 때만 계산합니다.">판매율</abbr>{item.sell_through.start ? ` · ${item.sell_through.start}~${item.sell_through.end}` : ""}</small><b>{item.sell_through.pct == null ? (item.sell_through.status === "mismatch" ? "수불 불일치" : "계산 안 함") : `${n(item.sell_through.pct)}%`}</b>{item.sell_through.pct == null ? <small>{item.sell_through.reason}</small> : <small>판매 {n(item.sell_through.sold_units ?? 0)} ÷ (기초 {n(item.sell_through.opening_stock ?? 0)} + 입고 {n(item.sell_through.received_units ?? 0)}) · {item.sell_through.source}</small>}</div></div>
-    <details className="work-inputs"><summary>현재 재고·판매가·원가 입력 {item.input_source && <span className={`work-provenance ${item.input_source}`}>{item.input_source === "simulation" ? "내가 입력한 가정" : "내가 입력한 조건"}</span>}</summary><div className="work-form-grid">
-      <label>현재 재고 (개)<input type="number" min="0" step="1" placeholder="예: 120" value={fields.stock_on_hand ?? ""} onChange={(event) => updateNumber("stock_on_hand", event.target.value)}/><small>{asOf} 기준 실제 수량 또는 시뮬레이션 값</small></label>
+    <div className="work-observation"><b>{item.reason}</b><small>최근 7일 {n(item.units_7d)}개 · 30일 {n(item.units_30d)}개 · 전기 30일 {n(item.prior_30d)}개</small><small>채널별 30일: {Object.entries(item.channel_units_30d).map(([channel, units]) => `${channel} ${n(units)}개`).join(" · ") || "기록 없음"}{dataset.kind === "hm" ? " · 채널 번호의 온·오프라인 의미는 확인 전" : ""}</small><strong>다음 검토: {item.action}</strong></div>
+    <div className="work-metrics"><div><small><abbr title="최근 14일 판매 수량을 14로 나눈 값으로 재고를 나눕니다. 판매 기간이 짧으면 관측된 일수로 나눕니다.">재고 소진 예상일</abbr></small><b className={item.days_of_cover != null && ["stockout", "stock_risk"].includes(item.risk) ? "decision-signal" : undefined}>{item.days_of_cover == null ? "재고 입력 후 계산" : `약 ${n(item.days_of_cover)}일`}</b></div><div><small><abbr title="매출에서 상품 매입원가만 뺀 값입니다. 배송비·광고비 등은 제외합니다.">30일 매출총이익</abbr></small><b>{item.observed_gross_profit_30d == null ? "원본 이익 자료 없음" : won(item.observed_gross_profit_30d)}</b></div><div><small>전년 같은 기간 · 동일 SKU</small><b>{item.year_ago_30d == null ? "비교 기간 없음" : `${n(item.year_ago_30d)}개`}</b></div><div><small><abbr title="판매율 = 기간 판매 수량 ÷ (기초재고 + 기간 입고). 기초재고 + 입고 − 판매가 기준일 재고와 맞을 때만 계산합니다.">판매율</abbr>{item.sell_through.start ? ` · ${item.sell_through.start}~${item.sell_through.end}` : ""}</small><b>{item.sell_through.pct == null ? (item.sell_through.status === "mismatch" ? "수불 불일치" : "계산 안 함") : `${n(item.sell_through.pct)}%`}</b>{item.sell_through.pct == null ? <small>{item.sell_through.reason}</small> : <small>판매 {n(item.sell_through.sold_units ?? 0)} ÷ (기초 {n(item.sell_through.opening_stock ?? 0)} + 입고 {n(item.sell_through.received_units ?? 0)}) · {item.sell_through.source}</small>}</div></div>
+    <details className="work-inputs"><summary>현재 재고·판매가·원가 입력</summary><div className="work-form-grid">
+      <label>현재 재고 (개)<input type="number" min="0" step="1" placeholder="예: 120" value={fields.stock_on_hand ?? ""} onChange={(event) => updateNumber("stock_on_hand", event.target.value)}/><small>{asOf} 기준 수량</small></label>
       <label>입고 예정 (개)<input type="number" min="0" step="1" placeholder="예: 30" value={fields.inbound_units ?? ""} onChange={(event) => updateNumber("inbound_units", event.target.value)}/></label>
       <label>입고 예정일<input type="date" min={nextDay(asOf)} value={fields.inbound_date ?? ""} onChange={(event) => setFields((value) => ({ ...value, inbound_date: event.target.value || null }))}/><small>날짜가 없으면 30일 가용 수량에 넣지 않습니다</small></label>
       <label>기초재고 (개)<input type="number" min="0" step="1" placeholder="예: 200" value={fields.opening_stock ?? ""} onChange={(event) => updateNumber("opening_stock", event.target.value)}/><small>판매율 계산용 · 기초재고일 판매 전 수량</small></label>
@@ -261,7 +252,7 @@ function PlanningPanel({ products, dataset, onOpen }: { products: WorkProduct[];
   const categories = [...groups.entries()].sort((a, b) => b[1].current - a[1].current).slice(0, 12);
   const seasonal = products.filter((item) => item.lifecycle && item.lifecycle !== "regular");
   return <><section className="panel work-panel"><div className="work-panel-heading"><div><h2>다음 기획에 참고할 판매 흐름</h2><small>현재 선택된 상품 범위에서 관측된 수량입니다. 전체 H&M 상품군의 실적은 아닙니다.</small></div></div><div className="table-scroll"><table className="data-table work-table"><thead><tr><th>상품 종류</th><th>상품 수</th><th>최근 30일</th><th>직전 30일</th><th>동일 상품 전년</th></tr></thead><tbody>{categories.map(([category, value]) => <tr key={category}><td>{category}</td><td>{n(value.count)}종</td><td>{n(value.current)}개</td><td>{n(value.previous)}개</td><td>{value.yearKnown ? `${n(value.year)}개 · ${value.yearKnown}종만` : "자료 없음"}</td></tr>)}</tbody></table></div><p className="work-caveat">H&M은 선정 상품 표본입니다. 신상은 작년 동일 SKU가 없을 수 있어 상품 종류의 수요 예측으로 바로 사용하지 않습니다.</p></section>
-    <section className="panel work-panel"><div className="work-panel-heading"><div><h2>상품 상태별 검토</h2><small>여름 잔여·가을 신상·작년 겨울 행사 여부는 MD가 입력한 경우에만 적용합니다.</small></div></div>{seasonal.length ? <div className="work-priority-list">{seasonal.map((item) => <button key={item.sku} onClick={() => onOpen(item.sku)}><span className="work-risk stable">{lifecycleLabels[item.lifecycle!] || item.lifecycle}</span><span className="work-priority-main"><b>{item.name}</b><small>{item.reason}</small></span><ArrowRight size={16}/></button>)}</div> : <p className="work-empty">상품 상태가 아직 입력되지 않았습니다. 상품을 열어 여름 잔여·가을 신상·작년 겨울 행사를 지정할 수 있습니다.</p>}{dataset.kind === "hm" && <p className="work-caveat">H&M에는 출시 예정·재발주 가능 여부가 없습니다. 입력한 상품 상태는 시뮬레이션 조건입니다.</p>}</section></>;
+    <section className="panel work-panel"><div className="work-panel-heading"><div><h2>상품 상태별 검토</h2><small>여름 잔여·가을 신상·작년 겨울 행사 여부는 MD가 입력한 경우에만 적용합니다.</small></div></div>{seasonal.length ? <div className="work-priority-list">{seasonal.map((item) => <button key={item.sku} onClick={() => onOpen(item.sku)}><span className="work-risk stable">{lifecycleLabels[item.lifecycle!] || item.lifecycle}</span><span className="work-priority-main"><b>{item.name}</b><small>{item.reason}</small></span><ArrowRight size={16}/></button>)}</div> : <p className="work-empty">상품 상태가 아직 입력되지 않았습니다. 상품을 열어 여름 잔여·가을 신상·작년 겨울 행사를 지정할 수 있습니다.</p>}</section></>;
 }
 
 function UploadPanel({ onUploaded, busy, setBusy, setError, setNotice }: {
